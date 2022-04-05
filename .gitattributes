@@ -1,6 +1,0 @@
-Data/ec3_out2iso.mat filter=lfs diff=lfs merge=lfs -text
-Data/ec4_out2iso.mat filter=lfs diff=lfs merge=lfs -text
-Data/ec_cptrain2.mat filter=lfs diff=lfs merge=lfs -text
-Data/ec_cptest.mat filter=lfs diff=lfs merge=lfs -text
-ec8_out3iso.mat filter=lfs diff=lfs merge=lfs -text
-ec10_out3iso.mat filter=lfs diff=lfs merge=lfs -text
