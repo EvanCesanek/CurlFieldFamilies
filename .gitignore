@@ -2,6 +2,9 @@ Data/
 *.mat
 *.key
 .DS_Store
+*.pdf
+*.png
+*.asv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

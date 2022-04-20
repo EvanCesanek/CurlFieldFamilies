@@ -13,16 +13,19 @@ if ~exist('/Volumes/eac2257/experiments/CurlFieldFamilies/Data','dir')
     system('open smb://locker-smb.engram.rc.zi.columbia.edu/wolpert-locker/users/eac2257')
 end
 
+% if ~exist('/Volumes/wolpert-locker/users','dir')
+%     system('open smb://locker-smb.engram.rc.zi.columbia.edu/wolpert-locker')
+% end
+
 %%
+cd ~/Documents/wolpertlab/CurlFieldFamilies
 system('rsync -av /Volumes/eac2257/experiments/CurlFieldFamilies/Data/ ./Data')
 
 %% go to the data directory
-cd /Volumes/eac2257/experiments/CurlFieldFamilies/Data
+%cd /Volumes/eac2257/experiments/CurlFieldFamilies/Data
 
 %%
-% if ismac
-%     cd ~/Documents/wolpertlab/CurlFieldFamilies/Data
-% end
+datadir = '~/Documents/wolpertlab/CurlFieldFamilies/Data/';
 
 %fn = 'ec1.mat';
 %fn = 'ec_out5.mat';
@@ -50,14 +53,68 @@ analyzetrain = true; % if analyzing out5, analyze early = true, else false
 %fn = 'ec8_out3iso.mat';
 %fn = 'ec9_out3iso.mat';
 %fn = 'ec10_out3iso.mat';
-fn = 'ec11_out3iso.mat';
+%fn = 'ec11_out3iso.mat';
 
 %fn = 'ec_cptrain2.mat';
 %fn = 'ec_cptest.mat';
 %fn = 'ec1_cpout3iso.mat';
 %fn = 'ec2_cpout3iso.mat';
 
-load(fn);
+%fn = 'ec_s1.mat';
+
+for sub = {'atf','ck','vp'}
+    for ses = {'_s1.mat','_s2.mat','_s3.mat'}
+        fn = [sub ses];
+        clearvars -except fn
+        if strcmpi(fn,'atf_s1.mat')
+            fn2 = 'atf_s1b.mat';
+        elseif strcmpi(fn,'vp_s2.mat')
+            fn2 = 'vp_s2b.mat';
+        end
+
+    %fn = 'atf_s1.mat';
+    %fn2 = 'atf_s1b.mat';
+    %fn = 'atf_s2.mat';
+    %fn = 'atf_s3.mat';
+    %fn = 'ck_s1.mat';
+    %fn = 'ck_s2.mat';
+    %fn = 'ck_s3.mat';
+    %fn = 'vp_s1.mat';
+    %fn = 'vp_s2.mat';
+    %fn2 = 'vp_s2b.mat';
+    %fn = 'vp_s3.mat';
+
+load([datadir fn]);
+if exist('fn2','var')
+    TrialData_pre = TrialData;
+    TimeStamp_pre = TimeStamp;
+    sizepre = size(TimeStamp_pre);
+    RobotPosition_pre = RobotPosition;
+    RobotVelocity_pre = RobotVelocity;
+    RobotForces_pre = RobotForces;
+
+    load([datadir fn2]);
+    sizepost = size(TimeStamp);
+    if sizepre(2) > sizepost(2)
+        nanpad = nan(sizepost(1),3,sizepre(2)-sizepost(2));
+        TimeStamp = [TimeStamp squeeze(nanpad(:,1,:))];
+        RobotPosition = cat(3, RobotPosition, nanpad);
+        RobotVelocity = cat(3, RobotVelocity, nanpad);
+        RobotForces = cat(3, RobotForces, nanpad);
+    elseif sizepre(2) < sizepost(2)
+        nanpad = nan(sizepre(1),3,sizepost(2)-sizepre(2));
+        TimeStamp_pre = [TimeStamp_pre squeeze(nanpad(:,1,:))];
+        RobotPosition_pre = cat(3, RobotPosition_pre, nanpad);
+        RobotVelocity_pre = cat(3, RobotVelocity_pre, nanpad);
+        RobotForces_pre = cat(3, RobotForces_pre, nanpad);
+    end
+    TrialData.TrialNumber = TrialData.TrialNumber + max(TrialData_pre.TrialNumber);
+    TrialData = [TrialData_pre; TrialData];
+    TimeStamp = [TimeStamp_pre; TimeStamp];
+    RobotPosition = [RobotPosition_pre; RobotPosition];
+    RobotVelocity = [RobotVelocity_pre; RobotVelocity];
+    RobotForces = [RobotForces_pre; RobotForces];
+end
 
 %%
 notmiss = ~TrialData.MissTrial;
@@ -68,6 +125,7 @@ chanall = strcmp(TrialData.block_name,'ChannelAll');
 
 gentarg = strcmp(TrialData.block_name,'GeneralizeTarget');
 
+famtest = strcmp(TrialData.block_name,'TestFam');
 expotest = strcmp(TrialData.block_name,'ExposureTest');
 gentest = strcmp(TrialData.block_name,'GeneralizeTest');
 
@@ -75,14 +133,15 @@ if ~any(strcmp('TargetAngle',TrialData.Properties.VariableNames))
     TrialData.TargetAngle = (pi/2)*ones(size(TrialData,1),1);
 end
 
-figure(100);
+figh = figure(100);
 clf;
 colors = parula(6); colors = colors(1:5,:); colormap(colors);
 %scatter(TrialData(notmiss,:).TrialNumber,TrialData.TargetAngle(notmiss,:),20*(1+str2num(num2str(TrialData(notmiss,:).FieldType==2))),TrialData(notmiss,:).ObjectId,'filled');
 scatter(TrialData(notmiss & ~channel,:).TrialNumber,TrialData.TargetAngle(notmiss & ~channel,:),20*(1+str2num(num2str(TrialData(notmiss & ~channel,:).FieldType==2))),TrialData(notmiss & ~channel,:).ObjectId,'Marker','|');
 hold on
 scatter(TrialData(notmiss & channel,:).TrialNumber,TrialData.TargetAngle(notmiss & channel,:),20*(1+str2num(num2str(TrialData(notmiss & channel,:).FieldType==2))),TrialData(notmiss & channel,:).ObjectId,'Marker','|','LineWidth',2);
-%ylim([pi/2,3*pi/2]);
+ylim([0,pi]);
+exportgraphics(figh,[fn '_design.pdf']);
 
 switch fn
     case 'ec1.mat'
@@ -97,14 +156,15 @@ switch fn
 
 end
 
-angles = unique(TrialData.TargetAngle)';
+angles = (pi/4):(pi/4):(3*pi/4); %unique(TrialData.TargetAngle)';
 numangles = length(angles);
 objects = unique(TrialData.ObjectId)';
 numobjects = max(objects);
 
 numdataframes = size(RobotPosition,3);
-interplength = 100; % how many interpolated data points?
-earlyinterpframes = 1:60; % Compute cumulative force over these frames
+interplength = 100; % How many interpolated data points?
+earlyinterpframes = 1:100; % Compute cumulative force over these frames
+thresh = 5; % Outlier threshold (# MADs)
 
 % initialize arrays
 objectviscousgain = nan(numobjects,1);
@@ -114,7 +174,7 @@ outlierinterpviscousgain = 0.15;
 multipleanglesperobject = false;
 
 for ai = 1:length(angles)
-    target = TrialData.TargetAngle==angles(ai);
+    target = TrialData.TargetAngle==angles(ai); %abs(TrialData.TargetAngle-angles(ai))<0.0001;
     % viscous gain associated with the target during training (by virtue of one-to-one object-target pairings)
     % only relevant for OUT5 condition (should be identical to objectviscous gain in OUT1 condition)
     targetviscousgain(ai) = mean(unique(TrialData.FieldConstants(~channel & target,1)));
@@ -163,11 +223,12 @@ for ai = 1:length(angles)
             otherwise
                 leniso = 10; % number of trials in expotest phase
                 %oiso = [3 5];
-                trialsel = notmiss & channel & object & target & (expotest | gentest);% & TrialData.block_count <= 85;
+                trialsel = notmiss & channel & object & target & (famtest | expotest | gentest);% & TrialData.block_count <= 85;
                 multipleanglesperobject = true;
                 analyzetrajectories = false;
                 if analyzetrajectories
-                    trialsel = notmiss & object & target & ~channel & TrialData.block_count >= 81; %& ismember(TrialData.block_count,21:25);
+                    %trialsel = notmiss & object & target & ~channel & TrialData.block_count >= 81; %& ismember(TrialData.block_count,21:25);
+                    trialsel = notmiss & object & target & ~channel;
                 end
         end
         
@@ -179,7 +240,7 @@ for ai = 1:length(angles)
         tmp = sum(trialsel);
         if ~exist('numtrialsincluded','var')
             numtrialsincluded = tmp;
-            widearraysize = [150,numdataframes,numobjects,numangles]; % start with size(dim1) = 70 so we have plenty of room
+            widearraysize = [150,numdataframes,numobjects,numangles]; % start with size(dim1) = 150 so we have plenty of room
             wideinterparraysize = [150,interplength,numobjects,numangles];
             % initialize arrays
             adaptindex = nan([150,numobjects,numangles]);
@@ -244,7 +305,7 @@ for ai = 1:length(angles)
         % Manual cropping using custom criteria (requires trajectory rotation to pi/2)  
         % (note that cropping based on WL State == MOVING doesn't work well) 
         ystartmove = 0.5;
-        yendmove = 9.6;
+        yendmove = 9.5;
         ystart = y > ystartmove;
         ystartcell = mat2cell(ystart,ones(size(ystart,1),1));
         startframe = cellfun(@(x) find(x,1), ystartcell);
@@ -316,111 +377,7 @@ for ai = 1:length(angles)
     end
 end
 
-figure(999);clf;plot3(-xfideali_wide(:,:,3,2)',-xfi_wide(:,:,3,2)',xout');hold on;plot3([0 10],[0 10],[0 10],':k');hold off
-
-%% Plot individual trajectories
-figure(1+10*multipleanglesperobject);
-clf
-tlo = tiledlayout(numobjects, numangles);
-for oi = objects
-    for ai = 1:numangles
-        axes(sub2ind([numobjects,numangles],oi,ai)) = nexttile;
-        hold on
-        plot(xfideal_wide(:,:,oi,ai)', y_wide(:,:,oi,ai)', '--');
-        plot(xf_wide(:,:,oi,ai)', y_wide(:,:,oi,ai)', '-')
-        xlim([-5,5]);
-        axis auto
-    end
-end
-linkaxes(axes);
-xlabel(tlo,sprintf('locations'),'FontSize',16);
-ylabel(tlo,sprintf('objects'),'FontSize',16);
-corner = nexttile(sub2ind([numangles numobjects],1,numobjects));
-xlabel(corner,'force','FontSize',8);
-ylabel(corner,'y','FontSize',8)
-
-%% Plot average trajectories
-figure(2+10*multipleanglesperobject);
-clf
-clear axes
-tlo = tiledlayout('flow');
-for oi = objects
-    for ai = 1:numangles
-        xfi = xfi_wide(:,:,oi,ai);
-        xfideali = xfideali_wide(:,:,oi,ai);
-        %firstinterpframe = find(~isnan(xfi(1,:)),1);
-        %rowstokeep = ~isnan(xfi(:,firstinterpframe));
-        rowstokeep = find(~all(isnan(xfi),2));
-        xfi = xfi(rowstokeep,:);
-        xfideali = xfideali(rowstokeep,:);
-        if isempty(tlo.Children) || multipleanglesperobject
-            % only need subplots if there are multiple angles per object combos
-            axes(sub2ind([numobjects,numangles],oi,ai)) = nexttile;
-        end
-        plot(mean(xfideali,1,'omitnan'),xout,'LineWidth',1.5,'LineStyle','--','Color',colors(oi,:));
-        hold on
-        se = std(xfi,0,1)/sqrt(size(xfi,1));
-        m = mean(xfi,1,'omitnan');
-        xout_omitnan = xout(~isnan(m));
-        se = se(~isnan(m));
-        m = m(~isnan(m));
-        fill([m-se fliplr(m+se)], [xout_omitnan fliplr(xout_omitnan)], colors(oi,:), 'LineStyle','none', 'FaceAlpha',0.4);
-        plot(m,xout_omitnan,'LineWidth',2,'Color',colors(oi,:));
-        %axis equal
-        %xfidealiall = reshape(permute(xfideali_wide,[2 1 3]),size(xfideali_wide,2),[])';
-        %plot(mean(xfidealiall(:,2:99),1),xout,'LineWidth',1.75,'LineStyle','-.','Color',[0 0 0]);
-    end
-end
-xlabel(tlo,'Lateral Force (N)');
-ylabel(tlo,'Y Position');
-if multipleanglesperobject
-    linkaxes(axes);
-end
-
-%% Plot average trajectories
-figure(3+10*multipleanglesperobject);
-clf
-clear axes
-tlo = tiledlayout('flow');
-for oi = 1:numobjects
-    for ai = 1:numangles
-        xfi = xi_wide(:,:,oi,ai);
-        %firstinterpframe = find(~isnan(xfi(1,:)),1);
-        %rowstokeep = ~isnan(xfi(:,firstinterpframe));
-        rowstokeep = find(~all(isnan(xfi),2));
-        xfi = xfi(rowstokeep,:);
-        if isempty(tlo.Children) || multipleanglesperobject
-            % only need subplots if there are multiple angles per object combos 
-            axes(sub2ind([numobjects,numangles],oi,ai)) = nexttile;
-        end
-        if isempty(xfi)
-            continue
-        end
-        hold on
-        se = std(xfi,0,1)/sqrt(size(xfi,1));
-        m = mean(xfi,1,'omitnan');
-        xout_omitnan = xout(~isnan(m));
-        se = se(~isnan(m));
-        m = m(~isnan(m));
-        plot(xfi',xout,'LineWidth',1,'Color',[colors(oi,:) 0.3]);
-        %fill([m-se fliplr(m+se)], [xout_omitnan fliplr(xout_omitnan)], colors(oi,:), 'LineStyle','none', 'FaceAlpha',0.4);
-        plot(m,xout_omitnan,'LineWidth',2,'Color',colors(oi,:));
-        if contains(fn,'out3iso')
-            plot([-0.33 0.33],[10 10],'k-','LineWidth',3)
-        else
-            plot([-0.5 0.5],[10 10],'k-','LineWidth',3)
-        end
-        %axis equal
-        %xfidealiall = reshape(permute(xfideali_wide,[2 1 3]),size(xfideali_wide,2),[])';
-        %plot(mean(xfidealiall(:,2:99),1),xout,'LineWidth',1.75,'LineStyle','-.','Color',[0 0 0]);
-        xlim([-2 2]);
-    end
-end
-xlabel(tlo,'X Position');
-ylabel(tlo,'Y Position');
-if multipleanglesperobject
-    linkaxes(axes);
-end
+%figure(999);clf;plot3(-xfideali_wide(:,:,3,2)',-xfi_wide(:,:,3,2)',xout');hold on;plot3([0 10],[0 10],[0 10],':k');hold off
 
 %% Plot adaptation index
 % for oi = 1:5
@@ -450,7 +407,6 @@ figh = figure(4+10*multipleanglesperobject);
 clf
 clear axes
 tlo = tiledlayout('flow','TileSpacing','compact');
-thresh = 4;
 for ai = 1:numangles
     if isempty(tlo.Children) || multipleanglesperobject
         % only need subplots if there are multiple angles per object combos
@@ -470,6 +426,7 @@ for ai = 1:numangles
             end
     
             xficum{ai,oi} = sum(-xfi(:,earlyinterpframes),2,'omitnan');
+            xficum_outidx{ai,oi} = find(~isoutlier(xficum{ai,oi},'ThresholdFactor',thresh));
             xfidealicum{ai,oi} = sum(-xfideali(:,earlyinterpframes),2,'omitnan');
             %xfidealicum(ai,oi) = cellfun(@(x,y) y(~ismaxormin(x)),xficum(ai,oi),xfidealicum(ai,oi),'UniformOutput',false);
             %xficum(ai,oi) = cellfun(@(x) x(~ismaxormin(x)),xficum(ai,oi),'UniformOutput',false);
@@ -566,10 +523,10 @@ if contains(fn,{'ec_cptrain','ec_cptest'})
     ylim([0 800]);
 end
 annotation('rectangle',[0 0 1 1],'Color','w');
-%exportgraphics(figh,[fn num2str(ph) '.pdf']);
+exportgraphics(figh,[fn '_bar1.pdf']);
 
 
-% Test for linear effect of size across largest 4 objects
+% Test for linear effect of size
 try
     for li = 1:3
         lol = xficum(li,1:end);
@@ -588,12 +545,20 @@ catch
 
 end
 
+%% Simulation: outlier performance only affects intercept, not slope
+% X = repelem(1:5,10)';
+% y = X+randn(size(X));
+% fitlm(X,y).Coefficients.Estimate'
+% for i = 1:100000
+%     y(X==3) = y(X==3)+randn(size(X(X==3)));
+% end
+% fitlm(X,y).Coefficients.Estimate'
+
 %% Plot cumulative force by movement direction (angle
 figh = figure(4+20*multipleanglesperobject);
 clf
 clear axes
 tlo = tiledlayout('flow','TileSpacing','compact');
-thresh = 4;
 for ai = 1:numangles
     if isempty(tlo.Children) || multipleanglesperobject
         % only need subplots if there are multiple angles per object combos
@@ -652,11 +617,11 @@ if contains(fn,{'ec_cptrain','ec_cptest'})
     ylim([0 800]);
 end
 annotation('rectangle',[0 0 1 1],'Color','w');
-%exportgraphics(figh,[fn num2str(ph) '.pdf']);
+exportgraphics(figh,[fn '_bar2.pdf']);
 
 
 %%
-if multipleanglesperobject % only need this plot if there are multiple angles-per-object combos
+if false && multipleanglesperobject % only need this plot if there are multiple angles-per-object combos
     figure(5+10*multipleanglesperobject)
     clf
     clear axes
@@ -676,6 +641,127 @@ if multipleanglesperobject % only need this plot if there are multiple angles-pe
     ylabel(tlo,'Cum. Lat. Force (N)');
     linkaxes(axes);
 end
+
+%% Plot individual trajectories
+figh = figure(1+10*multipleanglesperobject);
+clf
+tlo = tiledlayout(numobjects, numangles);
+for oi = 1:numobjects
+    for ai = 1:numangles
+        axes(sub2ind([numobjects,numangles],oi,ai)) = nexttile;
+        hold on
+        
+        % to remove outlier trials
+        xfi = xfi_wide(:,:,oi,ai);
+        rowstokeep = find(~all(isnan(xfi),2));
+        rowstokeep = rowstokeep(ismember(rowstokeep,xficum_outidx{ai,oi}));
+        
+        plot(xfideal_wide(rowstokeep,:,oi,ai)', y_wide(rowstokeep,:,oi,ai)', '--');
+        plot(xf_wide(rowstokeep,:,oi,ai)', y_wide(rowstokeep,:,oi,ai)', '-')
+        xlim([-5,5]);
+        axis auto
+    end
+end
+linkaxes(axes);
+xlabel(tlo,sprintf('locations'),'FontSize',16);
+ylabel(tlo,sprintf('objects'),'FontSize',16);
+corner = nexttile(sub2ind([numangles numobjects],1,numobjects));
+xlabel(corner,'force','FontSize',8);
+ylabel(corner,'y','FontSize',8)
+
+exportgraphics(figh,[fn '_traj.pdf']);
+%% Plot average trajectories
+figh = figure(2+10*multipleanglesperobject);
+clf
+clear axes
+tlo = tiledlayout('flow');
+for oi = 1:numobjects
+    for ai = 1:numangles
+        xfi = xfi_wide(:,:,oi,ai);
+        xfideali = xfideali_wide(:,:,oi,ai);
+        %firstinterpframe = find(~isnan(xfi(1,:)),1);
+        %rowstokeep = ~isnan(xfi(:,firstinterpframe));
+        rowstokeep = find(~all(isnan(xfi),2));
+        
+        % to remove outlier trials
+        rowstokeep = rowstokeep(ismember(rowstokeep,xficum_outidx{ai,oi}));
+        
+        xfi = xfi(rowstokeep,:);
+        xfideali = xfideali(rowstokeep,:);
+        if isempty(tlo.Children) || multipleanglesperobject
+            % only need subplots if there are multiple angles per object combos
+            axes(sub2ind([numobjects,numangles],oi,ai)) = nexttile;
+        end
+        plot(mean(xfideali,1,'omitnan'),xout,'LineWidth',1.5,'LineStyle','--','Color',colors(oi,:));
+        hold on
+        se = std(xfi,0,1)/sqrt(size(xfi,1));
+        m = mean(xfi,1,'omitnan');
+        xout_omitnan = xout(~isnan(m));
+        se = se(~isnan(m));
+        m = m(~isnan(m));
+        fill([m-se fliplr(m+se)], [xout_omitnan fliplr(xout_omitnan)], colors(oi,:), 'LineStyle','none', 'FaceAlpha',0.4);
+        plot(m,xout_omitnan,'LineWidth',2,'Color',colors(oi,:));
+        %axis equal
+        %xfidealiall = reshape(permute(xfideali_wide,[2 1 3]),size(xfideali_wide,2),[])';
+        %plot(mean(xfidealiall(:,2:99),1),xout,'LineWidth',1.75,'LineStyle','-.','Color',[0 0 0]);
+    end
+end
+xlabel(tlo,'Lateral Force (N)');
+ylabel(tlo,'Y Position');
+if multipleanglesperobject
+    linkaxes(axes);
+end
+exportgraphics(figh,[fn '_trajmean.pdf']);
+
+%% Plot average trajectories
+if analyzetrajectories
+    figure(3+10*multipleanglesperobject);
+    clf
+    clear axes
+    tlo = tiledlayout('flow');
+    for oi = 1:numobjects
+        for ai = 1:numangles
+            xfi = xi_wide(:,:,oi,ai);
+            %firstinterpframe = find(~isnan(xfi(1,:)),1);
+            %rowstokeep = ~isnan(xfi(:,firstinterpframe));
+            rowstokeep = find(~all(isnan(xfi),2));
+            xfi = xfi(rowstokeep,:);
+            if isempty(tlo.Children) || multipleanglesperobject
+                % only need subplots if there are multiple angles per object combos 
+                axes(sub2ind([numobjects,numangles],oi,ai)) = nexttile;
+            end
+            if isempty(xfi)
+                continue
+            end
+            hold on
+            se = std(xfi,0,1)/sqrt(size(xfi,1));
+            m = mean(xfi,1,'omitnan');
+            xout_omitnan = xout(~isnan(m));
+            se = se(~isnan(m));
+            m = m(~isnan(m));
+            plot(xfi',xout,'LineWidth',1,'Color',[colors(oi,:) 0.3]);
+            %fill([m-se fliplr(m+se)], [xout_omitnan fliplr(xout_omitnan)], colors(oi,:), 'LineStyle','none', 'FaceAlpha',0.4);
+            plot(m,xout_omitnan,'LineWidth',2,'Color',colors(oi,:));
+            if contains(fn,{'out3iso','_s'})
+                plot([-0.33 0.33],[10 10],'k-','LineWidth',3)
+            else
+                plot([-0.5 0.5],[10 10],'k-','LineWidth',3)
+            end
+            %axis equal
+            %xfidealiall = reshape(permute(xfideali_wide,[2 1 3]),size(xfideali_wide,2),[])';
+            %plot(mean(xfidealiall(:,2:99),1),xout,'LineWidth',1.75,'LineStyle','-.','Color',[0 0 0]);
+            xlim([-2 2]);
+        end
+    end
+    xlabel(tlo,'X Position');
+    ylabel(tlo,'Y Position');
+    if multipleanglesperobject
+        linkaxes(axes);
+    end
+    exportgraphics(figh,[fn '_trajfield.pdf']);
+end
+
+
 %%
 % close all
 % figh = figure(99);
