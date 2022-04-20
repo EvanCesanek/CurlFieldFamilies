@@ -1,9 +1,28 @@
-function [] = analyze_subject(fn,varargin)
+function [] = analyze_subject(fn,fn2,datadir,varargin)
+    %% Set parameters
+    analyzetrajectories = false;
+    thresh = 5;
+    earlyinterpframes = 1:100;
+
+    if nargin>=4 && ~isempty(varargin{1})
+        analyzetrajectories = varargin{1};
+    end
+
+    if nargin>=5 && ~isempty(varargin{2})
+        thresh = varargin{2};
+    end
     
-    fn2 = varargin{1};
-    load([datadir fn]);
-    
-    if exist('fn2','var')
+    if nargin>=6  && ~isempty(varargin{3})
+        earlyinterpframes = varargin{3};
+    end
+
+    if nargin>=7  && ~isempty(varargin{4})
+        bar_ylims = varargin{4};
+    end
+
+    %% Load input files
+    load([datadir fn], 'TrialData', 'TimeStamp', 'RobotPosition', 'RobotVelocity', 'RobotForces');
+    if fn2
         TrialData_pre = TrialData;
         TimeStamp_pre = TimeStamp;
         sizepre = size(TimeStamp_pre);
@@ -11,7 +30,7 @@ function [] = analyze_subject(fn,varargin)
         RobotVelocity_pre = RobotVelocity;
         RobotForces_pre = RobotForces;
     
-        load([datadir fn2]);
+        load([datadir fn2], 'TrialData', 'TimeStamp', 'RobotPosition', 'RobotVelocity', 'RobotForces');
         sizepost = size(TimeStamp);
         if sizepre(2) > sizepost(2)
             nanpad = nan(sizepost(1),3,sizepre(2)-sizepost(2));
@@ -34,62 +53,37 @@ function [] = analyze_subject(fn,varargin)
         RobotForces = [RobotForces_pre; RobotForces];
     end
     
-    %%
+    %% Get trial selector masks
     notmiss = ~TrialData.MissTrial;
     channel = TrialData.FieldType==2;
     expofam = strcmp(TrialData.block_name,'ExposureFam');
+    testfam = strcmp(TrialData.block_name,'TestFam');
     expoall = strcmp(TrialData.block_name,'ExposureAll');
-    chanall = strcmp(TrialData.block_name,'ChannelAll');
-    
-    gentarg = strcmp(TrialData.block_name,'GeneralizeTarget');
-    
-    famtest = strcmp(TrialData.block_name,'TestFam');
     expotest = strcmp(TrialData.block_name,'ExposureTest');
     gentest = strcmp(TrialData.block_name,'GeneralizeTest');
     
-    if ~any(strcmp('TargetAngle',TrialData.Properties.VariableNames))
-        TrialData.TargetAngle = (pi/2)*ones(size(TrialData,1),1);
-    end
-    
+    %% Plot design
     figh = figure(100);
     clf;
-    colors = parula(6); colors = colors(1:5,:); colormap(colors);
-    %scatter(TrialData(notmiss,:).TrialNumber,TrialData.TargetAngle(notmiss,:),20*(1+str2num(num2str(TrialData(notmiss,:).FieldType==2))),TrialData(notmiss,:).ObjectId,'filled');
-    scatter(TrialData(notmiss & ~channel,:).TrialNumber,TrialData.TargetAngle(notmiss & ~channel,:),20*(1+str2num(num2str(TrialData(notmiss & ~channel,:).FieldType==2))),TrialData(notmiss & ~channel,:).ObjectId,'Marker','|');
     hold on
-    scatter(TrialData(notmiss & channel,:).TrialNumber,TrialData.TargetAngle(notmiss & channel,:),20*(1+str2num(num2str(TrialData(notmiss & channel,:).FieldType==2))),TrialData(notmiss & channel,:).ObjectId,'Marker','|','LineWidth',2);
+    colors = parula(6); colors = colors(1:5,:); colormap(colors);
+    scatter(TrialData(notmiss & ~channel,:).TrialNumber,TrialData.TargetAngle(notmiss & ~channel,:),20*(1+str2double(num2str(TrialData(notmiss & ~channel,:).FieldType==2))),TrialData(notmiss & ~channel,:).ObjectId,'Marker','|');
+    scatter(TrialData(notmiss & channel,:).TrialNumber,TrialData.TargetAngle(notmiss & channel,:),20*(1+str2double(num2str(TrialData(notmiss & channel,:).FieldType==2))),TrialData(notmiss & channel,:).ObjectId,'Marker','|','LineWidth',2);
     ylim([0,pi]);
     exportgraphics(figh,[fn '_design.pdf']);
     
-    switch fn
-        case 'ec1.mat'
-            firstlateblock = 54;
-            lateblock = TrialData.block_count >= firstlateblock;
-    
-        case 'ec_out5.mat'
-            expolate = ismember(TrialData.block_count, 21:40);
-    
-        case 'dw_out5.mat'
-            expolate = ismember(TrialData.block_count, 1:5);
-    
-    end
-    
+    %% Preprocess
     angles = (pi/4):(pi/4):(3*pi/4); %unique(TrialData.TargetAngle)';
     numangles = length(angles);
     objects = unique(TrialData.ObjectId)';
     numobjects = max(objects);
-    
     numdataframes = size(RobotPosition,3);
     interplength = 100; % How many interpolated data points?
-    earlyinterpframes = 1:100; % Compute cumulative force over these frames
-    thresh = 5; % Outlier threshold (# MADs)
     
     % initialize arrays
     objectviscousgain = nan(numobjects,1);
     targetviscousgain = nan(numangles,1);
     outlierinterpviscousgain = 0.15;
-    
-    multipleanglesperobject = false;
     
     for ai = 1:length(angles)
         target = TrialData.TargetAngle==angles(ai); %abs(TrialData.TargetAngle-angles(ai))<0.0001;
@@ -102,52 +96,11 @@ function [] = analyze_subject(fn,varargin)
             % viscous gain associated with the object during training
             objectviscousgain(oi) = unique(TrialData.FieldConstants(~channel & object,1));
     
-            switch fn
-                case {'ec_cptrain2.mat'}
-                    ph = 3;
-                    trialsel = notmiss & channel & object & target & strcmpi(TrialData.block_short, 'W1') & TrialData.block_index_count>(ph*10) & TrialData.block_index_count<=(ph+1)*10;
-    
-                case {'ec_cptest.mat'}
-                    ph = 3;
-                    trialsel = notmiss & channel & object & target & strcmpi(TrialData.block_short, 'W3') & TrialData.block_index_count>(ph*10) & TrialData.block_index_count<=(ph+1)*10;
-    
-                case {'ec_outiso.mat','ec1_outiso.mat','ec1_isof.mat','ec1_isof5.mat', 'ec2_iso5.mat', 'ec4_iso5.mat', 'ec2_iso3.mat', 'ec2_iso3xl.mat'}
-                    leniso = 10; % number of trials in expotest phase
-                    oiso = regexp(fn,'\d*','Match');
-                    if isempty(oiso)
-                        if any(strcmpi(fn,{'ec_outiso.mat','ec1_outiso.mat'}))
-                            oiso = 3;
-                        elseif strcmpi(fn,{'ec1_isof.mat'})
-                            oiso = 2;
-                        end
-                    else
-                        oiso = str2double(oiso{numel(oiso)});
-                    end
-                    trialsel = notmiss & channel & object & target & (expotest | gentest);% & TrialData.block_count <= 35;
-                    multipleanglesperobject = true;
-                
-                case 'ec1.mat'
-                    trialsel = notmiss & channel & object & target & (expoall | chanall) & lateblock;
-            
-                case {'ec_out5.mat', 'dw_out5.mat'}
-                    if (analyzetrain)
-                        trialsel = notmiss & channel & object & target & expolate;
-                    else
-                        trialsel = notmiss & channel & object & target & gentarg;
-                        multipleanglesperobject = true;
-                    end
-    
-                %case {'ec2_cpout3iso.mat', 'ec1_cpout3iso.mat', 'ec8_out3iso.mat', 'ec7_out2iso.mat', 'ec3_out2isol.mat', 'ec_out2isol.mat', 'ec6_out2iso.mat', 'ec4_out2iso.mat', 'ec3_out2iso.mat', 'ec2_out2iso.mat','ec_out2iso.mat','jh_out2iso.mat','zz_out2iso.mat'}
-                otherwise
-                    leniso = 10; % number of trials in expotest phase
-                    %oiso = [3 5];
-                    trialsel = notmiss & channel & object & target & (famtest | expotest | gentest);% & TrialData.block_count <= 85;
-                    multipleanglesperobject = true;
-                    analyzetrajectories = false;
-                    if analyzetrajectories
-                        %trialsel = notmiss & object & target & ~channel & TrialData.block_count >= 81; %& ismember(TrialData.block_count,21:25);
-                        trialsel = notmiss & object & target & ~channel;
-                    end
+            %oiso = [3 5];
+            trialsel = notmiss & channel & object & target & (testfam | expotest | gentest);% & TrialData.block_count <= 85;
+            if analyzetrajectories
+                %trialsel = notmiss & object & target & ~channel & TrialData.block_count >= 81; %& ismember(TrialData.block_count,21:25);
+                trialsel = notmiss & object & target & ~channel;
             end
             
             if ~any(trialsel)
@@ -191,7 +144,7 @@ function [] = analyze_subject(fn,varargin)
             % forces
             xf = squeeze(RobotForces(trialsel, 1, :));
             yf = squeeze(RobotForces(trialsel, 2, :));
-            if size(x,2)==1 %numtrialsincluded==1
+            if size(x,2)==1
                 x = x';
                 y = y';
                 xv = xv';
@@ -295,6 +248,7 @@ function [] = analyze_subject(fn,varargin)
         end
     end
     
+    %%
     %figure(999);clf;plot3(-xfideali_wide(:,:,3,2)',-xfi_wide(:,:,3,2)',xout');hold on;plot3([0 10],[0 10],[0 10],':k');hold off
     
     %% Plot adaptation index
@@ -320,131 +274,67 @@ function [] = analyze_subject(fn,varargin)
     % ylabel('Adaptation');
     
     
-    %% Plot cumulative force by movement direction (angle
-    figh = figure(4+10*multipleanglesperobject);
+    %% Bar plot cumulative force
+    figh = figure(14);
     clf
     clear axes
     tlo = tiledlayout('flow','TileSpacing','compact');
     for ai = 1:numangles
-        if isempty(tlo.Children) || multipleanglesperobject
-            % only need subplots if there are multiple angles per object combos
-            axes(ai) = nexttile([10,1]);
-        end
+        axes(ai) = nexttile([10,1]);
         hold on
         for oi = 1:numobjects
-            if true || analyzetrajectories || ~ismember(oi,oiso) || (contains(fn,'out2iso') && ((ai==1 && oi==5) || (ai==3 && oi==3) || ai==2))
-                xfi = xfi_wide(:,:,oi,ai);
-                xfideali = xfideali_wide(:,:,oi,ai);
-                %firstinterpframe = find(~isnan(xfi(1,:)),1);
-                rowstokeep = find(~all(isnan(xfi),2));
-                xfi = xfi(rowstokeep,:);
-                xfideali = xfideali(rowstokeep,:);
-                if isempty(xfi)
-                    continue
-                end
-        
-                xficum{ai,oi} = sum(-xfi(:,earlyinterpframes),2,'omitnan');
-                xficum_outidx{ai,oi} = find(~isoutlier(xficum{ai,oi},'ThresholdFactor',thresh));
-                xfidealicum{ai,oi} = sum(-xfideali(:,earlyinterpframes),2,'omitnan');
-                %xfidealicum(ai,oi) = cellfun(@(x,y) y(~ismaxormin(x)),xficum(ai,oi),xfidealicum(ai,oi),'UniformOutput',false);
-                %xficum(ai,oi) = cellfun(@(x) x(~ismaxormin(x)),xficum(ai,oi),'UniformOutput',false);
-                xfidealicum(ai,oi) = cellfun(@(x,y) y(~isoutlier(x,'ThresholdFactor',thresh)),xficum(ai,oi),xfidealicum(ai,oi),'UniformOutput',false);
-                if oi==3
-                    xfideali = xfideali_wide(:,:,numobjects+1,ai);
-                    xfideali = xfideali(rowstokeep,:);
-                    xfidealicum{ai,numobjects+1} = sum(-xfideali(:,earlyinterpframes),2,'omitnan');
-                    xfidealicum(ai,numobjects+1) = cellfun(@(x,y) y(~isoutlier(x,'ThresholdFactor',thresh)),xficum(ai,oi),xfidealicum(ai,numobjects+1),'UniformOutput',false);
-                end
-                xficum(ai,oi) = cellfun(@(x) x(~isoutlier(x,'ThresholdFactor',thresh)),xficum(ai,oi),'UniformOutput',false);
-                xficummean(ai,oi) = mean(xficum{ai,oi});
-                xfidealicummean(ai,oi) = mean(xfidealicum{ai,oi});
-                bar(oi,xficummean(ai,oi),0.5,'FaceColor',colors(oi,:));
-                if oi==3
-                    xfidealicummean(ai,numobjects+1) = mean(xfidealicum{ai,numobjects+1});
-                end
-                if numtrialsincluded>1
-                    xficumci(ai,oi,:) = bootci(10000,@mean,xficum{ai,oi});
-                    xficumci(ai,oi,:) = xficumci(ai,oi,:)-xficummean(ai,oi);
-                    xfidealicumci(ai,oi,:) = bootci(10000,@mean,xfidealicum{ai,oi});
-                    xfidealicumci(ai,oi,:) = xfidealicumci(ai,oi,:)-xfidealicummean(ai,oi);
-                    errorbar(oi,xficummean(ai,oi),xficumci(ai,oi,1),xficumci(ai,oi,2),'.','LineWidth',2,'Color',colors(oi,:)*0.75);
-                    errorbar(oi,xfidealicummean(ai,oi),xfidealicumci(ai,oi,1),xfidealicumci(ai,oi,2),'Marker','none','MarkerFaceColor','black','MarkerEdgeColor','none','LineWidth',1.2,'Color',min(colors(oi,:)*1.33,[1 1 1]));
-                    if oi==3
-                        xfidealicumci(ai,numobjects+1,:) = bootci(10000,@mean,xfidealicum{ai,numobjects+1});
-                        xfidealicumci(ai,numobjects+1,:) = xfidealicumci(ai,numobjects+1,:)-xfidealicummean(ai,numobjects+1);
-                        errorbar(oi,xfidealicummean(ai,numobjects+1),xfidealicumci(ai,numobjects+1,1),xfidealicumci(ai,numobjects+1,2),'Marker','none','MarkerFaceColor','black','MarkerEdgeColor','none','LineWidth',1.2,'Color',[0.5 0.5 0.5]);
-                    end
-                end
+            xfi = xfi_wide(:,:,oi,ai);
+            xfideali = xfideali_wide(:,:,oi,ai);
+            rowstokeep = find(~all(isnan(xfi),2));
+            xfi = xfi(rowstokeep,:);
+            xfideali = xfideali(rowstokeep,:);
+            if isempty(xfi)
+                continue
+            end
     
-            else
-                xfi = xfi_wide(1:leniso,:,oi,ai);
-                xfideali = xfideali_wide(1:leniso,:,oi,ai);
-                %firstinterpframe = find(~isnan(xfi(1,:)),1);
-                %rowstokeep = ~isnan(xfi(:,firstinterpframe));
-                rowstokeep = find(~all(isnan(xfi),2));
-                xfi = xfi(rowstokeep,:);
+            xficum{ai,oi} = sum(-xfi(:,earlyinterpframes),2,'omitnan');
+            xficum_outidx{ai,oi} = find(~isoutlier(xficum{ai,oi},'ThresholdFactor',thresh));
+            xfidealicum{ai,oi} = sum(-xfideali(:,earlyinterpframes),2,'omitnan');
+            xfidealicum(ai,oi) = cellfun(@(x,y) y(~isoutlier(x,'ThresholdFactor',thresh)),xficum(ai,oi),xfidealicum(ai,oi),'UniformOutput',false);
+            if oi==3
+                xfideali = xfideali_wide(:,:,numobjects+1,ai);
                 xfideali = xfideali(rowstokeep,:);
-                
-                xficum{ai,numobjects+1} = sum(-xfi(:,earlyinterpframes),2,'omitnan');
                 xfidealicum{ai,numobjects+1} = sum(-xfideali(:,earlyinterpframes),2,'omitnan');
-                xfidealicum(ai,numobjects+1) = cellfun(@(x,y) y(~isoutlier(x,'ThresholdFactor',thresh)),xficum(ai,numobjects+1),xfidealicum(ai,numobjects+1),'UniformOutput',false);
-                xficum(ai,numobjects+1) = cellfun(@(x) x(~isoutlier(x,'ThresholdFactor',thresh)),xficum(ai,numobjects+1),'UniformOutput',false);
-                xficummean(ai,numobjects+1) = mean(xficum{ai,numobjects+1});
+                xfidealicum(ai,numobjects+1) = cellfun(@(x,y) y(~isoutlier(x,'ThresholdFactor',thresh)),xficum(ai,oi),xfidealicum(ai,numobjects+1),'UniformOutput',false);
+            end
+            xficum(ai,oi) = cellfun(@(x) x(~isoutlier(x,'ThresholdFactor',thresh)),xficum(ai,oi),'UniformOutput',false);
+            xficummean(ai,oi) = mean(xficum{ai,oi});
+            xfidealicummean(ai,oi) = mean(xfidealicum{ai,oi});
+            bar(oi,xficummean(ai,oi),0.5,'FaceColor',colors(oi,:));
+            if oi==3
                 xfidealicummean(ai,numobjects+1) = mean(xfidealicum{ai,numobjects+1});
-                bar(oi-0.25,xficummean(ai,numobjects+1),0.5,'FaceColor',colors(oi,:));
-                if numtrialsincluded>1
-                    xficumci(ai,numobjects+1,:) = bootci(10000,@mean,xficum{ai,numobjects+1});
-                    xficumci(ai,numobjects+1,:) = xficumci(ai,numobjects+1,:)-xficummean(ai,numobjects+1);
+            end
+            if numtrialsincluded>1
+                xficumci(ai,oi,:) = bootci(10000,@mean,xficum{ai,oi});
+                xficumci(ai,oi,:) = xficumci(ai,oi,:)-xficummean(ai,oi);
+                xfidealicumci(ai,oi,:) = bootci(10000,@mean,xfidealicum{ai,oi});
+                xfidealicumci(ai,oi,:) = xfidealicumci(ai,oi,:)-xfidealicummean(ai,oi);
+                errorbar(oi,xficummean(ai,oi),xficumci(ai,oi,1),xficumci(ai,oi,2),'.','LineWidth',2,'Color',colors(oi,:)*0.75);
+                errorbar(oi,xfidealicummean(ai,oi),xfidealicumci(ai,oi,1),xfidealicumci(ai,oi,2),'Marker','none','MarkerFaceColor','black','MarkerEdgeColor','none','LineWidth',1.2,'Color',min(colors(oi,:)*1.33,[1 1 1]));
+                if oi==3
                     xfidealicumci(ai,numobjects+1,:) = bootci(10000,@mean,xfidealicum{ai,numobjects+1});
                     xfidealicumci(ai,numobjects+1,:) = xfidealicumci(ai,numobjects+1,:)-xfidealicummean(ai,numobjects+1);
-                    errorbar(oi-0.25,xficummean(ai,numobjects+1),xficumci(ai,numobjects+1,1),xficumci(ai,numobjects+1,2),'.','LineWidth',2,'Color',colors(oi,:)*0.75);
-                    errorbar(oi-0.25,xfidealicummean(ai,numobjects+1),xfidealicumci(ai,numobjects+1,1),xfidealicumci(ai,numobjects+1,2),'Marker','none','MarkerFaceColor','black','MarkerEdgeColor','none','LineWidth',1.2,'Color',min(colors(oi,:)*1.33,[1 1 1]));
+                    errorbar(oi,xfidealicummean(ai,numobjects+1),xfidealicumci(ai,numobjects+1,1),xfidealicumci(ai,numobjects+1,2),'Marker','none','MarkerFaceColor','black','MarkerEdgeColor','none','LineWidth',1.2,'Color',[0.5 0.5 0.5]);
                 end
-    
-                xfi = xfi_wide(((leniso+1):end),:,oi,ai);
-                xfideali = xfideali_wide(((leniso+1):end),:,oi,ai);
-                %firstinterpframe = find(~isnan(xfi(1,:)),1);
-                %rowstokeep = ~isnan(xfi(:,firstinterpframe));
-                rowstokeep = find(~all(isnan(xfi),2));
-                xfi = xfi(rowstokeep,:);
-                xfideali = xfideali(rowstokeep,:);
-                if isempty(xfi)
-                    continue
-                end
-        
-                xficum{ai,oi} = sum(-xfi(:,earlyinterpframes),2,'omitnan');
-                xfidealicum{ai,oi} = sum(-xfideali(:,earlyinterpframes),2,'omitnan');
-                xfidealicum(ai,oi) = cellfun(@(x,y) y(~isoutlier(x,'ThresholdFactor',thresh)),xficum(ai,oi),xfidealicum(ai,oi),'UniformOutput',false);
-                xficum(ai,oi) = cellfun(@(x) x(~isoutlier(x,'ThresholdFactor',thresh)),xficum(ai,oi),'UniformOutput',false);
-                xficummean(ai,oi) = mean(xficum{ai,oi});
-                xfidealicummean(ai,oi) = mean(xfidealicum{ai,oi});
-                bar(oi+0.25,xficummean(ai,oi),0.5,'FaceColor',colors(oi,:));
-                if numtrialsincluded>1
-                    xficumci(ai,oi,:) = bootci(10000,@mean,xficum{ai,oi});
-                    xficumci(ai,oi,:) = xficumci(ai,oi,:)-xficummean(ai,oi);
-                    xfidealicumci(ai,oi,:) = bootci(10000,@mean,xfidealicum{ai,oi});
-                    xfidealicumci(ai,oi,:) = xfidealicumci(ai,oi,:)-xfidealicummean(ai,oi);
-                    errorbar(oi+0.25,xficummean(ai,oi),xficumci(ai,oi,1),xficumci(ai,oi,2),'.','LineWidth',2,'Color',colors(oi,:)*0.75);
-                    errorbar(oi+0.25,xfidealicummean(ai,oi),xfidealicumci(ai,oi,1),xfidealicumci(ai,oi,2),'Marker','none','MarkerFaceColor','black','MarkerEdgeColor','none','LineWidth',1.2,'Color',min(colors(oi,:)*1.33,[1 1 1]));
-                end
-    
-                
             end
         end
     end
-    if multipleanglesperobject
-        linkaxes(axes)
-    end
+    linkaxes(axes);
     xlabel(tlo,'Object ID');
     ylabel(tlo,'Cum. Lat. Force (N)');
+    ylim(bar_ylims(1,:));
     if contains(fn,{'ec_cptrain','ec_cptest'})
         ylim([0 800]);
     end
     annotation('rectangle',[0 0 1 1],'Color','w');
     exportgraphics(figh,[fn '_bar1.pdf']);
     
-    
-    % Test for linear effect of size
+    %% Test for linear effect of size
     try
         for li = 1:3
             lol = xficum(li,1:end);
@@ -463,30 +353,17 @@ function [] = analyze_subject(fn,varargin)
     
     end
     
-    %% Simulation: outlier performance only affects intercept, not slope
-    % X = repelem(1:5,10)';
-    % y = X+randn(size(X));
-    % fitlm(X,y).Coefficients.Estimate'
-    % for i = 1:100000
-    %     y(X==3) = y(X==3)+randn(size(X(X==3)));
-    % end
-    % fitlm(X,y).Coefficients.Estimate'
-    
-    %% Plot cumulative force by movement direction (angle
-    figh = figure(4+20*multipleanglesperobject);
+    %% Bar plot (ideal cumulative force - cumulative force)
+    figh = figure(24);
     clf
     clear axes
     tlo = tiledlayout('flow','TileSpacing','compact');
     for ai = 1:numangles
-        if isempty(tlo.Children) || multipleanglesperobject
-            % only need subplots if there are multiple angles per object combos
-            axes(ai) = nexttile([10,1]);
-        end
+        axes(ai) = nexttile([10,1]);
         hold on
         for oi = 1:numobjects
             xfi = xfi_wide(:,:,oi,ai);
             xfideali = xfideali_wide(:,:,oi,ai);
-            %firstinterpframe = find(~isnan(xfi(1,:)),1);
             rowstokeep = find(~all(isnan(xfi),2));
             xfi = xfi(rowstokeep,:);
             xfideali = xfideali(rowstokeep,:);
@@ -496,8 +373,6 @@ function [] = analyze_subject(fn,varargin)
     
             xficum{ai,oi} = sum(-xfi(:,earlyinterpframes),2,'omitnan');
             xfidealicum{ai,oi} = sum(-xfideali(:,earlyinterpframes),2,'omitnan');
-            %xfidealicum(ai,oi) = cellfun(@(x,y) y(~ismaxormin(x)),xficum(ai,oi),xfidealicum(ai,oi),'UniformOutput',false);
-            %xficum(ai,oi) = cellfun(@(x) x(~ismaxormin(x)),xficum(ai,oi),'UniformOutput',false);
             xfidealicum(ai,oi) = cellfun(@(x,y) y(~isoutlier(x,'ThresholdFactor',thresh)),xficum(ai,oi),xfidealicum(ai,oi),'UniformOutput',false);
             if oi==3
                 xfideali = xfideali_wide(:,:,numobjects+1,ai);
@@ -526,42 +401,18 @@ function [] = analyze_subject(fn,varargin)
             end
         end
     end
-    if multipleanglesperobject
-        linkaxes(axes)
-    end
+    linkaxes(axes);
     xlabel(tlo,'Object ID');
     ylabel(tlo,'Cum Lat. Force Error (N)');
+    ylim(bar_ylims(2,:));
     if contains(fn,{'ec_cptrain','ec_cptest'})
         ylim([0 800]);
     end
     annotation('rectangle',[0 0 1 1],'Color','w');
     exportgraphics(figh,[fn '_bar2.pdf']);
     
-    
-    %%
-    if false && multipleanglesperobject % only need this plot if there are multiple angles-per-object combos
-        figure(5+10*multipleanglesperobject)
-        clf
-        clear axes
-        tlo = tiledlayout('flow');
-        for oi = 1:numobjects
-            axes(oi) = nexttile([10,1]);
-            hold on
-            for ai = 1:numangles
-                bar(ai,xficummean(ai,oi),'FaceColor',colors(oi,:));
-                if numtrialsincluded>1
-                    errorbar(ai,xficummean(ai,oi),xficumci(ai,oi,1),xficumci(ai,oi,2),'.','LineWidth',2,'Color',colors(oi,:)*0.75);
-                    errorbar(ai,xfidealicummean(ai,oi),xfidealicumci(ai,oi,1),xfidealicumci(ai,oi,2),'Marker','o','MarkerFaceColor','black','MarkerEdgeColor','none','LineWidth',1.2,'Color',min(colors(oi,:)*1.33,[1 1 1]));
-                end
-            end
-        end
-        xlabel(tlo,'Target ID');
-        ylabel(tlo,'Cum. Lat. Force (N)');
-        linkaxes(axes);
-    end
-    
-    %% Plot individual trajectories
-    figh = figure(1+10*multipleanglesperobject);
+    %% Plot individual lateral force against channel trajectories
+    figh = figure(11);
     clf
     tlo = tiledlayout(numobjects, numangles);
     for oi = 1:numobjects
@@ -588,8 +439,9 @@ function [] = analyze_subject(fn,varargin)
     ylabel(corner,'y','FontSize',8)
     
     exportgraphics(figh,[fn '_traj.pdf']);
-    %% Plot average trajectories
-    figh = figure(2+10*multipleanglesperobject);
+    
+    %% Plot average lateral force against channel trajectories
+    figh = figure(12);
     clf
     clear axes
     tlo = tiledlayout('flow');
@@ -606,10 +458,7 @@ function [] = analyze_subject(fn,varargin)
             
             xfi = xfi(rowstokeep,:);
             xfideali = xfideali(rowstokeep,:);
-            if isempty(tlo.Children) || multipleanglesperobject
-                % only need subplots if there are multiple angles per object combos
-                axes(sub2ind([numobjects,numangles],oi,ai)) = nexttile;
-            end
+            axes(sub2ind([numobjects,numangles],oi,ai)) = nexttile;
             plot(mean(xfideali,1,'omitnan'),xout,'LineWidth',1.5,'LineStyle','--','Color',colors(oi,:));
             hold on
             se = std(xfi,0,1)/sqrt(size(xfi,1));
@@ -626,14 +475,12 @@ function [] = analyze_subject(fn,varargin)
     end
     xlabel(tlo,'Lateral Force (N)');
     ylabel(tlo,'Y Position');
-    if multipleanglesperobject
-        linkaxes(axes);
-    end
+    linkaxes(axes);
     exportgraphics(figh,[fn '_trajmean.pdf']);
     
-    %% Plot average trajectories
+    %% Plot average X-Y trajectories
     if analyzetrajectories
-        figure(3+10*multipleanglesperobject);
+        figure(13);
         clf
         clear axes
         tlo = tiledlayout('flow');
@@ -642,12 +489,9 @@ function [] = analyze_subject(fn,varargin)
                 xfi = xi_wide(:,:,oi,ai);
                 %firstinterpframe = find(~isnan(xfi(1,:)),1);
                 %rowstokeep = ~isnan(xfi(:,firstinterpframe));
-                rowstokeep = find(~all(isnan(xfi),2));
+                rowstokeep = ~all(isnan(xfi),2);
                 xfi = xfi(rowstokeep,:);
-                if isempty(tlo.Children) || multipleanglesperobject
-                    % only need subplots if there are multiple angles per object combos 
-                    axes(sub2ind([numobjects,numangles],oi,ai)) = nexttile;
-                end
+                axes(sub2ind([numobjects,numangles],oi,ai)) = nexttile;
                 if isempty(xfi)
                     continue
                 end
@@ -673,17 +517,7 @@ function [] = analyze_subject(fn,varargin)
         end
         xlabel(tlo,'X Position');
         ylabel(tlo,'Y Position');
-        if multipleanglesperobject
-            linkaxes(axes);
-        end
+        linkaxes(axes);
         exportgraphics(figh,[fn '_trajfield.pdf']);
     end
-end
-
-function out = ismaxormin(x)
-    out = zeros(size(x));
-    [~,maxi] = max(x);
-    [~,mini] = min(x);
-    out(maxi) = 1;
-    out(mini) = 1;
 end

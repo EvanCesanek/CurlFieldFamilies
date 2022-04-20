@@ -1,89 +1,25 @@
 clearvars
 clc
 
-if ~exist('/Volumes/eac2257/experiments/CurlFieldFamilies/Data','dir')
-    [~, ssid] = system("/Sy*/L*/Priv*/Apple8*/V*/C*/R*/airport -I | grep -w SSID | awk '{print $2}'");
-    if ~contains(ssid,'Columbia') % if we're not on columbia network open vpn app
-        system('open -a "Cisco AnyConnect Secure Mobility Client"')
-    end
-end
-
-%% once logged into vpn app, mount Engram
-if ~exist('/Volumes/eac2257/experiments/CurlFieldFamilies/Data','dir')
-    system('open smb://locker-smb.engram.rc.zi.columbia.edu/wolpert-locker/users/eac2257')
-end
-
-% if ~exist('/Volumes/wolpert-locker/users','dir')
-%     system('open smb://locker-smb.engram.rc.zi.columbia.edu/wolpert-locker')
-% end
-
-%%
-cd ~/Documents/wolpertlab/CurlFieldFamilies
-system('rsync -av /Volumes/eac2257/experiments/CurlFieldFamilies/Data/ ./Data')
-
-%% go to the data directory
-%cd /Volumes/eac2257/experiments/CurlFieldFamilies/Data
-
-%%
 datadir = '~/Documents/wolpertlab/CurlFieldFamilies/Data/';
-
-%fn = 'ec1.mat';
-%fn = 'ec_out5.mat';
-%fn = 'dw_out5.mat';
-analyzetrain = true; % if analyzing out5, analyze early = true, else false
-%fn = 'ec1_outiso.mat';
-%fn = 'ec1_isof.mat';
-%fn = 'ec1_isof5.mat';
-%fn = 'ec2_iso5.mat';
-%fn = 'ec4_iso5.mat';
-%fn = 'ec2_iso3.mat';
-%fn = 'ec2_iso3xl.mat';
-
-%fn = 'zz_out2iso.mat';
-%fn = 'jh_out2iso.mat';
-
-%fn = 'ec_out2iso.mat';
-%fn = 'ec2_out2iso.mat';
-%fn = 'ec3_out2iso.mat';
-%fn = 'ec4_out2iso.mat';
-%fn = 'ec6_out2iso.mat';
-%fn = 'ec_out2isol.mat';
-%fn = 'ec3_out2isol.mat';
-%fn = 'ec7_out2iso.mat';
-%fn = 'ec8_out3iso.mat';
-%fn = 'ec9_out3iso.mat';
-%fn = 'ec10_out3iso.mat';
-%fn = 'ec11_out3iso.mat';
-
-%fn = 'ec_cptrain2.mat';
-%fn = 'ec_cptest.mat';
-%fn = 'ec1_cpout3iso.mat';
-%fn = 'ec2_cpout3iso.mat';
-
-%fn = 'ec_s1.mat';
 
 for sub = {'atf','ck','vp'}
     for ses = {'_s1.mat','_s2.mat','_s3.mat'}
-        fn = [sub ses];
-        clearvars -except fn
+        fn = [sub{1} ses{1}];
+        clearvars -except sub ses fn datadir
+        fn2 = [];
         if strcmpi(fn,'atf_s1.mat')
             fn2 = 'atf_s1b.mat';
         elseif strcmpi(fn,'vp_s2.mat')
             fn2 = 'vp_s2b.mat';
         end
 
-    %fn = 'atf_s1.mat';
-    %fn2 = 'atf_s1b.mat';
-    %fn = 'atf_s2.mat';
-    %fn = 'atf_s3.mat';
-    %fn = 'ck_s1.mat';
-    %fn = 'ck_s2.mat';
-    %fn = 'ck_s3.mat';
-    %fn = 'vp_s1.mat';
-    %fn = 'vp_s2.mat';
-    %fn2 = 'vp_s2b.mat';
-    %fn = 'vp_s3.mat';
+        % filename, [fn2], datadir, [analyzetrajectories?], [thresh], [cuminterpframes], [barplotylims; ...] 
+        analyze_subject(fn,fn2,datadir,false,5,1:100,[0 750; -200 200])
+    end
+end
 
+%%
 load([datadir fn]);
 if exist('fn2','var')
     TrialData_pre = TrialData;
