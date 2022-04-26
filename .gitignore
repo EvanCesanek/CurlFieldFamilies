@@ -5,6 +5,7 @@ Data/
 *.pdf
 *.png
 *.asv
+.RHistory
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
