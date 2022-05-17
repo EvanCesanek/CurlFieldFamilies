@@ -17,7 +17,7 @@ source("~/Documents/R/DBDA2Eprograms/Jags-Ymet-XmetSsubj-MrobustHier.R")
 # Generate the MCMC chain:
 #startTime = proc.time()
 mcmcCoda = genMCMC( data=df2 , xName=xName , yName=yName , sName=sName ,
-                    numSavedSteps=30000 , thinSteps=7 , saveName=fileNameRoot, nChains = 8 )
+                    numSavedSteps=50000 , thinSteps=7 , saveName=fileNameRoot, nChains = 8 )
 #stopTime = proc.time()
 #duration = stopTime - startTime
 #show(duration)
@@ -51,7 +51,7 @@ library(lmerTest)
 library(sjPlot)
 df2 = subset(df,Session==3 & !IsOutlier)
 df2$Object = df2$Object-1
-mdl = lmer(Force ~ Object + Target + (1 + Object | Subject), df2)
+mdl = lmerTest::lmer(Force ~ Object + Target + (1 + Object | Subject), df2)
 summary(mdl)
 coef(mdl)
 plot_model(mdl,type='est')
