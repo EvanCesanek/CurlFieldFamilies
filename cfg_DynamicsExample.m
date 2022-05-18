@@ -46,17 +46,17 @@ WL.cfg.StationarySpeed = 5; % cm/s
 WL.cfg.StationaryTime = 0.1; % s
 
 % Require movement to end stationary within target?
-WL.cfg.StopAtTarget = false;
+WL.cfg.StopAtTarget = true;
 
 WL.cfg.MovementReactionTimeOut = 1.0;
 WL.cfg.MovementTooSlowTimeout = 1.0;
 WL.cfg.MovementTooSlowWarning = 0.7;
 WL.cfg.MovementTooFastWarning = 0.3;
 WL.cfg.MovementTooFastTimeout = 0.15;
-WL.cfg.InterTrialDelay = 0.0;
+WL.cfg.InterTrialDelay = 0.23;
 WL.cfg.RestBreakSeconds = 45;
 WL.cfg.TrialDelay = 0.15;
-WL.cfg.FinishDelay = 0.33;
+WL.cfg.FinishDelay = 0.1;
 WL.cfg.ErrorWait = 1.5;
 
 WL.cfg.ObjectPulseDuration = 0.15;
@@ -140,9 +140,9 @@ switch upper(cfg_name)
         upperlim = 3*pi/2;
         WL.cfg.TargetAngleRandomShift = lowerlim + rand*(upperlim - lowerlim - targetspacing);
     
-    case {'OUT3ISO', 'OUT2ISO','OUT2ISOL'} % fixed 100 - 160 - 220 // 135 - 180 - 225
+    case {'BASIC','OUT3ISO_S1','OUT3ISO_S2','OUT3ISO_S3','OUT3ISO', 'OUT2ISO','OUT2ISOL'} % fixed 100 - 160 - 220 // 135 - 180 - 225
         targetspacing = pi/4; %pi/3;
-        WL.cfg.TargetAngleRandomShift = 3*pi/4; %pi/2+10*pi/180;
+        WL.cfg.TargetAngleRandomShift = pi/4; %pi/2+10*pi/180;
         WL.cfg.NumTargets = 8;
     
     otherwise
@@ -409,7 +409,7 @@ switch upper(cfg_name) % Specify parameters unique to each experiment (VMR/FF)
         %T = parse_tree(30*W0 + 50*WA + 5*WB + 5*WC + 5*WB + 5*WC);
         T = parse_tree(25*WA + 5*WB + 5*WC + 5*WB + 5*WC);
 
-    case 'OUT3ISO'
+    case 'OUT3ISO_S1'
         WL.cfg.ISOtarget = [3 5]; %[3 5] or [3 1]
         
         if all(WL.cfg.ISOtarget==[3 5])
@@ -424,6 +424,67 @@ switch upper(cfg_name) % Specify parameters unique to each experiment (VMR/FF)
         ExposureFam.Permute = true;
         W0 = WL.parse_trials(ExposureFam);
         
+        TestFam.Trial.Index.ObjectId = [1 2 4 5 WL.cfg.ISOtarget([2 2]) 1 2 4 5 WL.cfg.ISOtarget([2 2]) 1 2 4 5 WL.cfg.ISOtarget(2)];
+        TestFam.Trial.Index.TargetAngle = [2 2 2 2 WL.cfg.ISOposn([2 2]) 2 2 2 2 WL.cfg.ISOposn([2 2]) 2 2 2 2 WL.cfg.ISOposn(2)];
+        TestFam.Trial.Index.Field = [2 2 2 2 2 2 2 2 2 2 2 2 3 3 3 3 3];
+        TestFam.Permute = true;
+        TestFam.Location = sparse(length(TestFam.Trial.Index.Field),length(TestFam.Trial.Index.Field));
+        TestFam.Location(find(TestFam.Trial.Index.Field==3,1):end, 1:2:end) = 1;
+        W0Test = WL.parse_trials(TestFam);
+        
+        T = parse_tree(20*W0 + 'R' + 40*W0 + 'R' + 40*W0 + 10*W0Test);
+        T.Timed = ones(rows(T),1);
+        T.Timed(1:find(T.RestFlag,1)) = 0; % No timeouts until first rest break
+        WL.cfg.FirstTestTrial = find(strcmpi(T.block_name,'TestFam'),1);
+        
+    case 'OUT3ISO_S2'
+        WL.cfg.ISOtarget = [3 5]; %[3 5] or [3 1]
+
+        if all(WL.cfg.ISOtarget==[3 5])
+            WL.cfg.ISOposn = [1 3];
+        elseif all(WL.cfg.ISOtarget==[3 1])
+            WL.cfg.ISOposn = [1 7];
+        end
+
+        ExposureFam.Trial.Index.ObjectId = [1 2 4 5 WL.cfg.ISOtarget([2 2])];
+        ExposureFam.Trial.Index.TargetAngle = [2 2 2 2 WL.cfg.ISOposn([2 2])];
+        ExposureFam.Trial.Index.Field = [2 2 2 2 2 2];
+        ExposureFam.Permute = true;
+        W0 = WL.parse_trials(ExposureFam);
+        ExposureAll.Trial.Index.ObjectId = [1 2 3 4 5 WL.cfg.ISOtarget([1 1 1 2 2 2])];
+        ExposureAll.Trial.Index.TargetAngle = [2 2 2 2 2 WL.cfg.ISOposn([1 1 1 2 2 2])];
+        ExposureAll.Trial.Index.Field = [2 2 2 2 2 2 2 2 2 2 2];
+        ExposureAll.Permute = true;
+        WA = WL.parse_trials(ExposureAll);
+
+        ExposureTest.Trial.Index.ObjectId = [1 2 3 4 5 WL.cfg.ISOtarget([1 1 1 2 2 2]) 1 2 3 4 5 WL.cfg.ISOtarget([1 1 1 2 2 2]) 1 2 3 4 5 WL.cfg.ISOtarget([1 2])];
+        ExposureTest.Trial.Index.TargetAngle = [2 2 2 2 2 WL.cfg.ISOposn([1 1 1 2 2 2]) 2 2 2 2 2 WL.cfg.ISOposn([1 1 1 2 2 2]) 2 2 2 2 2 WL.cfg.ISOposn([1 2])];
+        ExposureTest.Trial.Index.Field = [2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 3 3 3 3 3 3 3];
+        ExposureTest.Permute = true;
+        ExposureTest.Location = sparse(length(ExposureTest.Trial.Index.Field),length(ExposureTest.Trial.Index.Field));
+        ExposureTest.Location(find(ExposureTest.Trial.Index.Field==3,1):end, 1:2:end) = 1;
+        WB = WL.parse_trials(ExposureTest);
+
+        T = parse_tree(10*W0 + 'R' + 30*WA + 'R' + 10*WA + 10*WB);
+        
+        T.Timed = ones(rows(T),1);
+        T.Timed(1:find(T.RestFlag,1)) = 0; % No timeouts until first rest break
+        
+    case 'OUT3ISO_S3'
+        WL.cfg.ISOtarget = [3 5]; %[3 5] or [3 1]
+
+        if all(WL.cfg.ISOtarget==[3 5])
+            WL.cfg.ISOposn = [1 3];
+        elseif all(WL.cfg.ISOtarget==[3 1])
+            WL.cfg.ISOposn = [1 7];
+        end
+
+        ExposureFam.Trial.Index.ObjectId = [1 2 4 5 WL.cfg.ISOtarget([2 2])];
+        ExposureFam.Trial.Index.TargetAngle = [2 2 2 2 WL.cfg.ISOposn([2 2])];
+        ExposureFam.Trial.Index.Field = [2 2 2 2 2 2];
+        ExposureFam.Permute = true;
+        W0 = WL.parse_trials(ExposureFam);
+
         ExposureAll.Trial.Index.ObjectId = [1 2 3 4 5 WL.cfg.ISOtarget([1 1 1 2 2 2])];
         ExposureAll.Trial.Index.TargetAngle = [2 2 2 2 2 WL.cfg.ISOposn([1 1 1 2 2 2])];
         ExposureAll.Trial.Index.Field = [2 2 2 2 2 2 2 2 2 2 2];
@@ -438,17 +499,114 @@ switch upper(cfg_name) % Specify parameters unique to each experiment (VMR/FF)
         ExposureTest.Location(find(ExposureTest.Trial.Index.Field==3,1):end, 1:2:end) = 1;
         WB = WL.parse_trials(ExposureTest);
         
-        GeneralizeTest.Trial.Index.ObjectId = [1 2 3 4 5 WL.cfg.ISOtarget([1 1 1 2 2 2]) 1 2 3 4 5 WL.cfg.ISOtarget([1 1 1 2 2 2]) 1 2 3 4 5 1 2 3 4 5];
-        GeneralizeTest.Trial.Index.TargetAngle = [2 2 2 2 2 WL.cfg.ISOposn([1 1 1 2 2 2]) 2 2 2 2 2 WL.cfg.ISOposn([1 1 1 2 2 2]) WL.cfg.ISOposn([1 1 1 1 1 2 2 2 2 2])];
-        GeneralizeTest.Trial.Index.Field = [2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 3 3 3 3 3 3 3 3 3 3];
-        GeneralizeTest.Permute = true;
-        GeneralizeTest.Location = sparse(length(GeneralizeTest.Trial.Index.Field),length(GeneralizeTest.Trial.Index.Field));
-        GeneralizeTest.Location(find(GeneralizeTest.Trial.Index.Field==3,1):end, 1:2:end) = 1;
-        WC = WL.parse_trials(GeneralizeTest);
-        
-        %T = parse_tree(20*WA + 5*WB + 5*WC + 5*WB + 5*WC);
-        T = parse_tree(30*W0 + 50*WA + 5*WB + 5*WC + 5*WB + 5*WC);
+        % NB - THIS IS SPECIFIC FOR ISOTARGET == [3 5] and ISOPOSN = [1 3]
+        if all(WL.cfg.ISOtarget==[3 5])
+            GeneralizeTest.Trial.Index.ObjectId = [1 2 3 4 5 WL.cfg.ISOtarget([1 1 1 2 2 2]) 1 2 3 4 5 WL.cfg.ISOtarget([1 1 1 2 2 2]) 1 2 4 5 1 2 3 4];
+            GeneralizeTest.Trial.Index.TargetAngle = [2 2 2 2 2 WL.cfg.ISOposn([1 1 1 2 2 2]) 2 2 2 2 2 WL.cfg.ISOposn([1 1 1 2 2 2]) WL.cfg.ISOposn([1 1 1 1 2 2 2 2])];
+            GeneralizeTest.Trial.Index.Field = [2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 3 3 3 3 3 3 3 3];
+            GeneralizeTest.Permute = true;
+            GeneralizeTest.Location = sparse(length(GeneralizeTest.Trial.Index.Field),length(GeneralizeTest.Trial.Index.Field));
+            GeneralizeTest.Location(find(GeneralizeTest.Trial.Index.Field==3,1):end, 1:2:end) = 1;
+            WC = WL.parse_trials(GeneralizeTest);
+        end
 
+        T = parse_tree(35*WA + 'R' + 5*WA + 5*WB + 5*WC + 5*WB + 5*WC);
+        
+        T.Timed = ones(rows(T),1);
+        
+        
+    case 'BASIC'
+        ExposureFam.Trial.Index.ObjectId = [1 2 4 5];
+        ExposureFam.Trial.Index.TargetAngle = [2 2 2 2];
+        ExposureFam.Trial.Index.Field = [2 2 2 2];
+        ExposureFam.Permute = true;
+        W0 = WL.parse_trials(ExposureFam);
+        
+        WA = [];
+        for ti = 1:WL.cfg.NumObjects
+            if ti == WL.cfg.OutlierId
+                continue
+            else
+                ExposureAll.Trial.Index.ObjectId = [1 2 3 4 5];
+                ExposureAll.Trial.Index.TargetAngle = [2 2 2 2 2];
+                ExposureAll.Trial.Index.Field = [2 2 2 2 2];
+                ExposureAll.Location = sparse(WL.cfg.NumObjects,WL.cfg.NumObjects);
+                ExposureAll.Location(WL.cfg.OutlierId,2:WL.cfg.NumObjects) = 1; % outlier should only appear in slot 1
+                ExposureAll.Location(ti,[1 3:WL.cfg.NumObjects]) = 1; % the current test object should only appear in slot 2
+                % the other 3 items should appear in random order at the end of the block
+                ExposureAll.Permute = true;
+            end
+
+            WA = [WA WL.parse_trials(ExposureAll)]; % Generate a list of children
+        end
+        WC = wl_node(WA,[],'sample');
+        % WC has 4 different "test orders" that are sampled without replacement
+        % 4*WC gives you one of each
+
+        ExposureTest.Trial.Index.ObjectId = [1 2 3 4 5 1 2 3 4 5 1 2 3 4 5];
+        ExposureTest.Trial.Index.TargetAngle = [2 2 2 2 2 2 2 2 2 2 2 2 2 2 2];
+        ExposureTest.Trial.Index.Field = [2 2 2 2 2 2 2 2 2 2 3 3 3 3 3];
+        ExposureTest.Permute = true;
+        ExposureTest.Location = sparse(length(ExposureTest.Trial.Index.Field),length(ExposureTest.Trial.Index.Field));
+        ExposureTest.Adjacency = sparse(length(ExposureTest.Trial.Index.Field),length(ExposureTest.Trial.Index.Field));
+        % Don't put two field trials in a row
+        ExposureTest.Adjacency(1,6) = 1; ExposureTest.Adjacency(6,1) = 1;
+        ExposureTest.Adjacency(2,7) = 1; ExposureTest.Adjacency(2,7) = 1;
+        ExposureTest.Adjacency(3,8) = 1; ExposureTest.Adjacency(3,8) = 1;
+        ExposureTest.Adjacency(4,9) = 1; ExposureTest.Adjacency(4,9) = 1;
+        ExposureTest.Adjacency(5,10) = 1; ExposureTest.Adjacency(10,5) = 1;
+        % Don't put channel trial immediately after corresponding field
+        ExposureTest.Adjacency([1 6], 11) = 1;
+        ExposureTest.Adjacency([2 7], 12) = 1;
+        ExposureTest.Adjacency([3 8], 13) = 1;
+        ExposureTest.Adjacency([4 9], 14) = 1;
+        ExposureTest.Adjacency([5 10], 15) = 1;
+        % Don't put two channel trials in a row
+        ExposureTest.Adjacency(11, 12:15) = 1;
+        ExposureTest.Adjacency(12, [11 13 14 15]) = 1;
+        ExposureTest.Adjacency(13, [11 12 14 15]) = 1;
+        ExposureTest.Adjacency(14, [11 12 13 15]) = 1;
+        ExposureTest.Adjacency(15, 11:14) = 1;
+        % Don't let channel trials come first (to avoid cross-block problems) 
+        ExposureTest.Location(11:15,1) = 1;
+        
+        WB = WL.parse_trials(ExposureTest);
+        
+        T = parse_tree( 20*W0 + 40*WC + 10*WB );
+        
+        T.Timed = zeros(rows(T),1);
+        
+        % EAC: This isn't so important, so not doing it...
+        % Don't allow the same object to be repeated at block transitions
+%         for bki = 2:20
+%             firstTrialOfBlock = find(T.block_count==bki,1);
+%             lastTrialPrevBlock = firstTrialOfBlock-1;
+%             if T.ObjectId(firstTrialOfBlock)==T.ObjectId(lastTrialPrevBlock)
+%                 % If we have a repeat, we will swap the last trial of the
+%                 % previous block with an earlier trial of the previous block
+%                 % (but never the first trial, and also not the second if we're in Test phase)
+%                 lengthPrevBlock = length(find(T.block_count==bki-1));
+%                 if bki > 21 % if we're in test phase
+%                     swapSpan = lengthPrevBlock-2-1; % we don't want to swap with either of the first two or the last
+%                 else
+%                     swapSpan = lengthPrevBlock-1-1; % if we're in training, we only don't want to swap w the first or last
+%                 end
+%                 swapTrial = lastTrialPrevBlock - randi(swapSpan);
+%                 % Store the data before overwriting
+%                 repTrialData = T(lastTrialPrevBlock,:);
+%                 swapTrialData = T(swapTrial,:);
+%                 if repTrialData.RestFlag
+%                     % if the trial we're moving earlier comes before a rest break
+%                     %  then we should swap the RestFlag values
+%                     repTrialData.RestFlag = 0;
+%                     swapTrialData.RestFlag = 1;
+%                 end
+%                 % Swap the rows in TrialData
+%                 T(lastTrialPrevBlock,:) = swapTrialData;
+%                 T(swapTrial,:) = repTrialData;
+%             end
+%         end
+        
     otherwise
         error('cfg name invalid')
 end
