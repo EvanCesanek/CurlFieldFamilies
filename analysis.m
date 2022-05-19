@@ -42,7 +42,8 @@ end
 figure(100);
 clf;
 subset = ~TrialData.MissTrial & TrialData.Subject==1;
-g1 = gramm('x',TrialData.TrialNumber(subset),'y',TrialData.TargetAngle(subset),'size',TrialData.ChannelTrial(subset),'color',TrialData.ObjectId(subset),'row',TrialData.Session(subset));
+g1 = gramm('x',TrialData.TrialNumber(subset),'y',TrialData.TargetAngle(subset),'size',TrialData.ChannelTrial(subset),...
+    'color',TrialData.ObjectId(subset),'row',TrialData.Session(subset));
 g1.axe_property('YLim',[0 7*pi/8]);
 g1.no_legend();
 g1.set_point_options('markers',{'|'});
@@ -53,7 +54,8 @@ g1.set_names('x','Block (WL)','y','Target Angle (rad.)','row','Session');
 g1.draw();
 
 for mi = 1:length(get([g1.results.geom_point_handle],'MarkerFaceColor'))
-    set(g1.results.geom_point_handle(mi),'MarkerEdgeColor',get(g1.results.geom_point_handle(mi),'MarkerFaceColor'),'LineWidth',get(g1.results.geom_point_handle(mi),'MarkerSize')/10);
+    set(g1.results.geom_point_handle(mi),'MarkerEdgeColor',get(g1.results.geom_point_handle(mi),'MarkerFaceColor'),...
+        'LineWidth',get(g1.results.geom_point_handle(mi),'MarkerSize')/10);
 end
 
 td = TrialData(subset & TrialData.block_trial==1, :);
@@ -76,24 +78,30 @@ g1.draw();
 %% MPE
 figure(1);
 clf;
-% before channel phase:
-subset = ~TrialData.MissTrial & ~TrialData.ChannelTrial & TrialData.TargetAngle==pi/2 & ... % set to ~=pi/2 to see MPE for exposure trials to peripheral targets
+% Set TrialData.TargetAngle~=pi/2 for MPE on field trials to peripheral targets
+
+% Batch - before channel phase:
+subset = ~TrialData.MissTrial & ~TrialData.ChannelTrial & TrialData.TargetAngle==pi/2 & ...
     (   (TrialData.Session==1 & ismember(TrialData.block_count,81:100)) | ...
         (TrialData.Session==2 & ismember(TrialData.block_count,36:50)) | ...
         (TrialData.Session==3 & ismember(TrialData.block_count,26:40))    );
-% during channel phase:
+
+% Batch - during channel phase:
 % subset = ~TrialData.MissTrial & ~TrialData.ChannelTrial & TrialData.TargetAngle==pi/2 & ...
 %     (   (TrialData.Session==1 & TrialData.block_count>100) | ...
 %         (TrialData.Session==2 & TrialData.block_count>50) | ...
 %         (TrialData.Session==3 & TrialData.block_count>40)    );
 
-% subset = ~TrialData.MissTrial & ~TrialData.ChannelTrial & TrialData.TargetAngle==pi/2 & ... % set to ~=pi/2 to see MPE for exposure trials to peripheral targets
+% Additional - other periods:
+subset = ~TrialData.MissTrial & ~TrialData.ChannelTrial & TrialData.TargetAngle==pi/2 & ... 
+    (TrialData.Session==1 & ismember(TrialData.block_count,1:16));
+
 %     (TrialData.Session==1 & ismember(TrialData.block_count,1:16));
-    %(TrialData.Session==1 & ismember(TrialData.block_count,1:16));
-    %(TrialData.Session==1 & ismember(TrialData.block_count,46:60));
-    %(TrialData.Session==1 & ismember(TrialData.block_count,61:70));
+%     (TrialData.Session==1 & ismember(TrialData.block_count,46:60));
+%     (TrialData.Session==1 & ismember(TrialData.block_count,61:70));
     
-g1 = gramm('x',TrialData.ObjectId(subset),'y',TrialData.MPE(subset),'color',TrialData.ObjectId(subset),'row',TrialData.Subject(subset),'column',TrialData.Session(subset));
+g1 = gramm('x',TrialData.ObjectId(subset),'y',TrialData.MPE(subset),'color',TrialData.ObjectId(subset),...
+    'row',TrialData.Subject(subset),'column',TrialData.Session(subset));
 g1.axe_property('YLim',[-1.5 1],'XLim',[0.5 5.5]);
 g1.no_legend();
 g1.set_color_options('map',colors);
@@ -109,7 +117,6 @@ g1.stat_summary('geom','errorbar','width',1,'type','sem');
 g1.draw();
 
 %g1.export('file_name','MPE_PreChannel_N5.pdf','file_type','pdf');
-
 
 %% Channel Trials - exclude outliers (grouped subject x object x target x session)
 subset = ~TrialData.MissTrial & TrialData.ChannelTrial;
@@ -131,10 +138,11 @@ end
 fprintf('\n%i AF outlier trials excluded (%.2f%s of total).\n',sum(isnan(TrialData.CumForce(subset))),100*sum(isnan(TrialData.CumForce(subset)))/size(TrialData(subset,:),1),'%');
 
 %% Channel Trial Integrated Forces
-loc = 1; % 1 = outlier (NE), 2 = straight, all (N), 5 = largest (NW)
+loc = 2; % 1 = outlier (NE), 2 = straight, all (N), 3 = largest (NW)
 figure(2+loc);
 clf;
-g1 = gramm('x',TrialData.ObjectId(subset),'y',-TrialData.CumForce(subset),'color',TrialData.ObjectId(subset),'row',TrialData.Subject(subset),'column',TrialData.Session(subset),'subset',TrialData.TargetAngle(subset)==loc*pi/4);
+g1 = gramm('x',TrialData.ObjectId(subset),'y',-TrialData.CumForce(subset),'color',TrialData.ObjectId(subset),...
+    'row',TrialData.Subject(subset),'column',TrialData.Session(subset),'subset',TrialData.TargetAngle(subset)==loc*pi/4);
 g1.axe_property('YLim',[0.5 2.5],'XLim',[0.5 5.5]);
 g1.no_legend();
 g1.set_color_options('map',colors);
@@ -163,36 +171,45 @@ set([g1.results.geom_line_handle],'Color',[.6 .6 .6],'LineWidth',1,'LineStyle','
 set([g1.results.geom_point_handle],'MarkerEdgeColor',[.6 .6 .6],'LineWidth',2);
 
 c = splitapply(@nanmean, TrialData.IdealCumForce(subset), groups);
+sel = t==loc*pi/4 & o==3;
+ndat = sum(sel);
+nses = length(unique(ss(sel)));
+nsub = length(unique(s(sel)));
 
 if length(c)>5
-    if loc==1
+    % Getting the outlier cum force on the right panels is tricky
+    if loc==1 % the outlier location is easy because we don't need to skip any panels
         x = o;
         y = c;
         row = s;
         column = ss;
-        subs = (t==loc*pi/4 & o==3);
-    elseif loc>=2
-        x = repelem(3,11)';
-        y = [nan; c(t==loc*pi/4 & o==3)];
-        row = [1; repelem(1:5,2)'];
-        column = [1; repmat([2 3]',5,1)];
+        subs = sel;
+    elseif loc==2 % middle location, we need to skip the first column  (outlier is not in Session 1)
+        x = repelem(3,ndat+1)';
+        y = [nan; c(sel)];
+        row = [1; repelem(1:nsub,2)'];
+        column = [1; repmat([2 3]',nsub,1)];
+        subs = [];
+    elseif loc==3 % right location, we need to skip the first two columns (outlier is not in Sessions 1-2)
+        x = repelem(3,ndat+2)';
+        y = [nan; nan; c(sel)];
+        row = [1; 1; repelem(1:nsub,1)'];
+        column = [1; 2; repelem(3,nsub)'];
         subs = [];
     end
 
     g1.update('x',x,'y',y,'row',row,'column',column,'subset',subs);
-    g1.set_color_options('map',colors*0);
-    g1.no_legend();
-    g1.set_point_options('markers',{'_'});
-    g1.geom_point();
-    g1.draw();
+    
 else
+    % Very simple when it's one subject one session, just one data point
     g1.update('x',3,'y',c(o==3));
-    g1.set_color_options('map',colors*0);
-    g1.no_legend();
-    g1.set_point_options('markers',{'_'});
-    g1.geom_point();
-    g1.draw();
 end
+
+g1.set_color_options('map',colors*0);
+g1.no_legend();
+g1.set_point_options('markers',{'_'});
+g1.geom_point();
+g1.draw();
 
 set([g1.results.geom_point_handle],'MarkerEdgeColor',colors(3,:)*0.5,'LineWidth',2);
 
