@@ -11,6 +11,16 @@ classdef DynamicsExample < wl_experiment_v1_6
         MovementDurationTimeoutMessage = '';
         
         Explosion = [];
+        
+        SkipToTest = false;
+        
+        BestStreak = 0;
+        Streak = 0;
+        StreakColor = [1 1 1];
+        StreakPosnPx = [-100 -100];
+        
+        MPEBuffer = [];
+        ScoreBuffer = [];
     end
     methods
         % must implement ALL abstract methods or matlab will complain.
@@ -68,8 +78,10 @@ classdef DynamicsExample < wl_experiment_v1_6
             % Stimulus frame counter.
             WL.FrameCounter.Stimulus = wl_frame_counter();
             WL.Timer.Stimulus = wl_timer;
+            WL.Timer.ScoreFade = wl_timer;
             WL.Timer.ObjectPulseTimer = wl_timer;
             WL.ObjectColor = WL.cfg.ObjectActiveColor;
+            WL.StreakPosnPx = WL.cm2pix(WL.cfg.HomePosition);
         end
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         function idle_func(WL)
@@ -78,6 +90,9 @@ classdef DynamicsExample < wl_experiment_v1_6
         end
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         function keyboard_func(WL,keyname)
+            if strcmpi(keyname,'+')
+                WL.SkipToTest = true;
+            end
             %WL.printf('Key pressed: %s\n',keyname);
         end
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -127,11 +142,17 @@ classdef DynamicsExample < wl_experiment_v1_6
                 end
             end
             
+            if WL.State.Current > WL.State.FINISH || (WL.State.Current<WL.State.OBJECT && ~isempty(WL.ScoreBuffer))
+                WL.draw_text(sprintf('+%i',WL.ScoreBuffer(end)), 'center', 'center', 'fontsize', 20, 'col', [1 1 1 max(0, 1-WL.Timer.ScoreFade.GetTime())]);
+            end
+            
             Screen('EndOpenGL',WL.Screen.window)
             txt = sprintf('Trial = %i State = %s', WL.TrialNumber, WL.State.Name{WL.State.Current});
             
             WL.draw_text(txt, 'center', 100, 'col', [1 1 1]);
             WL.draw_text(txt, 20, WL.Screen.windowRect(4)-30, 'fontsize', 12, 'fliph', 0,'flipv', 0, 'col', [1 1 1]);
+            WL.draw_text(sprintf('Total Score: %i', sum(WL.ScoreBuffer)), 'center', 140, 'col', WL.StreakColor);
+            WL.draw_text(sprintf('%i',WL.Streak), WL.StreakPosnPx(1), WL.StreakPosnPx(2), 'col', WL.StreakColor);
         end
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         function state_process(WL)
@@ -221,9 +242,12 @@ classdef DynamicsExample < wl_experiment_v1_6
                             
                         elseif mt < WL.cfg.MovementTooFastWarning
                             WL.play_sound(WL.cfg.fastwarnbeep);
+                            WL.update_streak(1);
                         elseif mt > WL.cfg.MovementTooSlowWarning
                             WL.play_sound(WL.cfg.slowwarnbeep);
+                            WL.update_streak(0);
                         else
+                            WL.update_streak(1);
                             WL.play_sound(WL.cfg.placebeep);
                         end
                         
@@ -241,12 +265,14 @@ classdef DynamicsExample < wl_experiment_v1_6
                             %WL.printf('Stimulus on for %d frames, %.3f ms (%.1f Hz).\n',WL.Trial.StimulusFrameCount,WL.Trial.StimulusTime,WL.Trial.StimulusFrameCount/WL.Trial.StimulusTime);
                         end
                         WL.state_next(WL.State.FINISH);
-                    elseif  WL.Timer.MovementDurationTimer.GetTime > WL.cfg.MovementTooSlowTimeout
+                    elseif WL.Timer.MovementDurationTimer.GetTime > 2.5 || (WL.Trial.Timed && WL.Timer.MovementDurationTimer.GetTime > WL.cfg.MovementTooSlowTimeout)
                         WL.MovementDurationTimeoutMessage = 'Too Slow';
+                        WL.update_streak(0);
                         WL.state_next(WL.State.TIMEOUT);
                     end
                     
                 case WL.State.FINISH
+                    %[ok, WL.GW.FrameData, names] = WL.Hardware.DataGet(); %doesn't work (or work fast enough?)
                     if WL.State.Timer.GetTime > WL.cfg.FinishDelay % Trial has finished so stop trial.
                         %ok = WL.Robot.RampDown();
                         WL.trial_stop();
@@ -262,6 +288,9 @@ classdef DynamicsExample < wl_experiment_v1_6
 %                             if  WL.Trial.MovementDurationTime >= WL.cfg.MovementDurationTimeOut && (WL.Trial.FieldType ~= 3)
 %                                 WL.error_state( 'Moved Too Slow',WL.State.NEXT);
 %                             else
+                            WL.MPEBuffer = [WL.MPEBuffer WL.compute_mpe(WL.Trial.TargetAngle)];
+                            WL.ScoreBuffer = [WL.ScoreBuffer round(max(0,100-100*WL.MPEBuffer(end)))];
+                            WL.Timer.ScoreFade.Reset();
                             WL.state_next(WL.State.NEXT);
 %                             end
                         end
@@ -277,7 +306,11 @@ classdef DynamicsExample < wl_experiment_v1_6
                     end
                     
                 case WL.State.INTERTRIAL % Wait for the intertrial delay to expire.
-                    if WL. Timer.Paradigm.InterTrialDelayTimer.GetTime > WL.cfg.InterTrialDelay
+                    if WL.Timer.Paradigm.InterTrialDelayTimer.GetTime > WL.cfg.InterTrialDelay
+                        if WL.SkipToTest
+                            WL.TrialNumber = WL.cfg.FirstTestTrial;
+                            WL.SkipToTest = false;
+                        end
                         WL.state_next(WL.State.SETUP);
                     end
                     
@@ -378,6 +411,29 @@ classdef DynamicsExample < wl_experiment_v1_6
             %out = ~WL.robot_at_object();
         end
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        function [] = update_streak(WL,in)
+            if in==0
+                WL.Streak = 0;
+                WL.StreakColor = [1 1 1];
+            else
+                WL.Streak = WL.Streak + 1;
+                if WL.Streak > WL.BestStreak
+                    WL.BestStreak = WL.Streak;
+                    %WL.StreakColor = [1 0 1];
+                end
+            end
+        end
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        function mpe = compute_mpe(WL, target_angle)
+            rotationangle = -(target_angle - pi/2)*180/pi;
+            if contains(version,'2017')
+                rotmat = EulerRotationMatrix('z',rotationangle,'D',0);
+            else
+                rotmat = rotz(rotationangle);
+            end
+            xyz_r = rotmat * WL.GW.FrameData{1}.RobotPosition(:,WL.GW.FrameData{1}.State==WL.State.MOVING);
+            mpe = max(abs(xyz_r(1,:)));
+        end
     end
 end
 
