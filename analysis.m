@@ -1,20 +1,19 @@
 clearvars
 clc
+colors = parula(6); colors = colors(1:5,:);
 
-datadir = '~/Documents/wolpertlab/CurlFieldFamilies/Data/';
-df = [];
+%% Single subject
+TrialData = analyze_subject(1,1,'eac_locstopbasic');
 
+%% Batch
 subi = 0;
-TrialData = [];
 for sub = {'atf','ck','vp','ik','dg'}
-%for sub = {'ik','dg'}
     subi = subi+1;
     sesi = 0;
     for ses = {'_s1.mat','_s2.mat','_s3.mat'}
         sesi = sesi+1;
         fn = [sub{1} ses{1}];
-        fprintf(['Processing ' fn]);
-        clearvars -except sub ses fn datadir df subi sesi TrialData
+
         fn2 = [];
         if strcmpi(fn,'atf_s1.mat')
             fn2 = 'atf_s1b.mat';
@@ -22,7 +21,9 @@ for sub = {'atf','ck','vp','ik','dg'}
             fn2 = 'vp_s2b.mat';
         end
 
-        [tmp, td] = analyze_subject(subi,sesi,fn,fn2,datadir);
+        fprintf('\nProcessing %s\n',fn);
+
+        td = analyze_subject(subi,sesi,fn,fn2);
         if subi==1 && sesi==1
             TrialData = td;
             TrialData.Timed = ones(size(TrialData,1),1);
@@ -33,19 +34,14 @@ for sub = {'atf','ck','vp','ik','dg'}
 end
 
 %writetable(TrialData,'dat.csv');
-
-save('TrialDataN5.mat',"TrialData")
-%%
-clearvars
-
-colors = parula(6); colors = colors(1:5,:);
-
-load('TrialDataN5.mat')
+%save('TrialDataN5.mat',"TrialData")
+%clearvars
+%load('TrialDataN5.mat')
 
 %% Timeline
 figure(100);
 clf;
-subset = ~TrialData.MissTrial & TrialData.Subject==5;
+subset = ~TrialData.MissTrial & TrialData.Subject==1;
 g1 = gramm('x',TrialData.TrialNumber(subset),'y',TrialData.TargetAngle(subset),'size',TrialData.ChannelTrial(subset),'color',TrialData.ObjectId(subset),'row',TrialData.Session(subset));
 g1.axe_property('YLim',[0 7*pi/8]);
 g1.no_legend();
@@ -90,6 +86,13 @@ subset = ~TrialData.MissTrial & ~TrialData.ChannelTrial & TrialData.TargetAngle=
 %     (   (TrialData.Session==1 & TrialData.block_count>100) | ...
 %         (TrialData.Session==2 & TrialData.block_count>50) | ...
 %         (TrialData.Session==3 & TrialData.block_count>40)    );
+
+% subset = ~TrialData.MissTrial & ~TrialData.ChannelTrial & TrialData.TargetAngle==pi/2 & ... % set to ~=pi/2 to see MPE for exposure trials to peripheral targets
+%     (TrialData.Session==1 & ismember(TrialData.block_count,1:16));
+    %(TrialData.Session==1 & ismember(TrialData.block_count,1:16));
+    %(TrialData.Session==1 & ismember(TrialData.block_count,46:60));
+    %(TrialData.Session==1 & ismember(TrialData.block_count,61:70));
+    
 g1 = gramm('x',TrialData.ObjectId(subset),'y',TrialData.MPE(subset),'color',TrialData.ObjectId(subset),'row',TrialData.Subject(subset),'column',TrialData.Session(subset));
 g1.axe_property('YLim',[-1.5 1],'XLim',[0.5 5.5]);
 g1.no_legend();
@@ -128,7 +131,7 @@ end
 fprintf('\n%i AF outlier trials excluded (%.2f%s of total).\n',sum(isnan(TrialData.CumForce(subset))),100*sum(isnan(TrialData.CumForce(subset)))/size(TrialData(subset,:),1),'%');
 
 %% Channel Trial Integrated Forces
-loc = 3; % 1 = outlier (NE), 2 = straight, all (N), 5 = largest (NW)
+loc = 1; % 1 = outlier (NE), 2 = straight, all (N), 5 = largest (NW)
 figure(2+loc);
 clf;
 g1 = gramm('x',TrialData.ObjectId(subset),'y',-TrialData.CumForce(subset),'color',TrialData.ObjectId(subset),'row',TrialData.Subject(subset),'column',TrialData.Session(subset),'subset',TrialData.TargetAngle(subset)==loc*pi/4);
@@ -161,26 +164,35 @@ set([g1.results.geom_point_handle],'MarkerEdgeColor',[.6 .6 .6],'LineWidth',2);
 
 c = splitapply(@nanmean, TrialData.IdealCumForce(subset), groups);
 
-if loc==1
-    x = o;
-    y = c;
-    row = s;
-    column = ss;
-    subs = (t==loc*pi/4 & o==3);
-elseif loc>=2
-    x = repelem(3,11)';
-    y = [nan; c(t==loc*pi/4 & o==3)];
-    row = [1; repelem(1:5,2)'];
-    column = [1; repmat([2 3]',5,1)];
-    subs = [];
-end
+if length(c)>5
+    if loc==1
+        x = o;
+        y = c;
+        row = s;
+        column = ss;
+        subs = (t==loc*pi/4 & o==3);
+    elseif loc>=2
+        x = repelem(3,11)';
+        y = [nan; c(t==loc*pi/4 & o==3)];
+        row = [1; repelem(1:5,2)'];
+        column = [1; repmat([2 3]',5,1)];
+        subs = [];
+    end
 
-g1.update('x',x,'y',y,'row',row,'column',column,'subset',subs);
-g1.set_color_options('map',colors*0);
-g1.no_legend();
-g1.set_point_options('markers',{'_'});
-g1.geom_point();
-g1.draw();
+    g1.update('x',x,'y',y,'row',row,'column',column,'subset',subs);
+    g1.set_color_options('map',colors*0);
+    g1.no_legend();
+    g1.set_point_options('markers',{'_'});
+    g1.geom_point();
+    g1.draw();
+else
+    g1.update('x',3,'y',c(o==3));
+    g1.set_color_options('map',colors*0);
+    g1.no_legend();
+    g1.set_point_options('markers',{'_'});
+    g1.geom_point();
+    g1.draw();
+end
 
 set([g1.results.geom_point_handle],'MarkerEdgeColor',colors(3,:)*0.5,'LineWidth',2);
 
