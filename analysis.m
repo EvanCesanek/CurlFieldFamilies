@@ -1,6 +1,17 @@
 clearvars
 clc
 colors = parula(6); colors = colors(1:5,:);
+if ispc
+    addpath('U:/gramm')
+end
+
+if contains(version(),'2017')
+    timeline_marker = '+';
+    correct_marker = '+';
+else
+    timeline_marker = '|';
+    correct_marker = '_';
+end
 
 %% Single subject
 %TrialData = analyze_subject(1,1,'eac_locstop2');
@@ -23,6 +34,10 @@ TrialData = analyze_subject(1,1,'eac_locstopTRI');
 %         TrialData = [TrialData; td];
 %     end
 % end
+%TrialData = analyze_subject(1,1,'eac_locstopbasic');
+TrialData = analyze_subject(1,1,'zz_locstop');
+%TrialData = analyze_subject(1,1,'eac_locstopCW2');
+%TrialData = analyze_subject(1,1,'eac_pilotNEG2.mat');
 
 %% Batch
 % subi = 0;
@@ -84,9 +99,9 @@ clf;
 subset = ~TrialData.MissTrial & TrialData.Subject==1;
 g1 = gramm('x',TrialData.TrialNumber(subset),'y',TrialData.TargetAngle(subset),'size',TrialData.ChannelTrial(subset),...
     'color',TrialData.ObjectId(subset),'row',TrialData.Session(subset));
-g1.axe_property('YLim',[0 7*pi/8]);
+g1.axe_property('YLim',[0 9*pi/8]);
 g1.no_legend();
-g1.set_point_options('markers',{'|'});
+g1.set_point_options('markers',{timeline_marker});
 g1.set_color_options('map',colors);
 g1.geom_point();
 g1.set_names('x','Block (WL)','y','Target Angle (rad.)','row','Session');
@@ -138,12 +153,17 @@ subset = ~TrialData.MissTrial & ~TrialData.ChannelTrial & TrialData.TargetAngle=
     %(TrialData.Session==2 & ismember(TrialData.block_count,41:52));
     %(TrialData.Session==1 & ismember(TrialData.block_count,51:60));
 %     (TrialData.Session==2 & ismember(TrialData.block_count,1:16));
+% Additional - other periods:
+subset = ~TrialData.MissTrial & ~TrialData.ChannelTrial & ...%TrialData.TargetAngle==pi/2 & ... 
+    (TrialData.Session==1 & ismember(TrialData.block_count,61:80));
+
+%     (TrialData.Session==1 & ismember(TrialData.block_count,1:16));
 %     (TrialData.Session==1 & ismember(TrialData.block_count,46:60));
 %     (TrialData.Session==2 & ismember(TrialData.block_count,41:52));
 
 g1 = gramm('x',TrialData.ObjectId(subset),'y',TrialData.MPE(subset),'color',TrialData.ObjectId(subset),...
     'row',TrialData.Subject(subset),'column',TrialData.Session(subset));
-g1.axe_property('YLim',[-1.5 1],'XLim',[0.5 5.5]);
+g1.axe_property('YLim',[-2.5 5.5],'XLim',[0.5 5.5]);
 g1.no_legend();
 g1.set_color_options('map',colors);
 g1.stat_summary('geom','bar','width',3);
@@ -182,9 +202,9 @@ fprintf('\n%i AF outlier trials excluded (%.2f%s of total).\n',sum(isnan(TrialDa
 loc = 2; % 1 = outlier (NE), 2 = straight, all (N), 3 = largest (NW)
 figure(2+loc);
 clf;
-g1 = gramm('x',TrialData.ObjectId(subset),'y',-TrialData.CumForce(subset),'color',TrialData.ObjectId(subset),...
+g1 = gramm('x',TrialData.ObjectId(subset),'y',TrialData.FieldDirection(subset).*TrialData.CumForce(subset),'color',TrialData.ObjectId(subset),...
     'row',TrialData.Subject(subset),'column',TrialData.Session(subset),'subset',TrialData.TargetAngle(subset)==loc*pi/4);
-g1.axe_property('YLim',[0.5 2.5],'XLim',[0.5 5.5]);
+g1.axe_property('YLim',[-2.5 2.5],'XLim',[0.5 5.5]);
 g1.no_legend();
 g1.set_color_options('map',colors);
 g1.stat_summary('geom','bar','width',3);
@@ -198,12 +218,12 @@ g1.no_legend();
 g1.stat_summary('geom','errorbar','width',1,'type','sem');
 g1.draw();
 
-b = splitapply(@nanmean, TrialData.IdealInterpCumForce(subset), groups);
+b = splitapply(@nanmean, -TrialData.IdealInterpCumForce(subset), groups);
 
 g1.update('x',o,'y',b,'color',[],'row',s,'column',ss,'subset',t==loc*pi/4);
 g1.set_color_options('map',colors*0.75);
 g1.no_legend();
-g1.set_point_options('markers',{'_'});
+g1.set_point_options('markers',{correct_marker});
 g1.geom_point();
 g1.geom_line();
 g1.draw();
@@ -211,7 +231,7 @@ g1.draw();
 set([g1.results.geom_line_handle],'Color',[.6 .6 .6],'LineWidth',1,'LineStyle',':');
 set([g1.results.geom_point_handle],'MarkerEdgeColor',[.6 .6 .6],'LineWidth',2);
 
-c = splitapply(@nanmean, TrialData.IdealCumForce(subset), groups);
+c = splitapply(@nanmean, -TrialData.IdealCumForce(subset), groups);
 sel = t==loc*pi/4 & o==3;
 ndat = sum(sel);
 nses = length(unique(ss(sel)));
@@ -248,7 +268,7 @@ end
 
 g1.set_color_options('map',colors*0);
 g1.no_legend();
-g1.set_point_options('markers',{'_'});
+g1.set_point_options('markers',{correct_marker});
 g1.geom_point();
 g1.draw();
 

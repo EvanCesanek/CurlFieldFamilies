@@ -35,25 +35,41 @@ WL.cfg.ScreenIndex = 0;
 % WL.cfg.ScreenIndex =2
 
 %%%%%%%%%%%%%%% experiment speciific parameters
+WL.cfg.Feature = 'size';
+WL.cfg.Feature = 'location';
+
 WL.cfg.CursorRadius = 0.25;
 WL.cfg.HomeRadius = 0.5;
-WL.cfg.TargetRadius = 0.33;
+WL.cfg.TargetRadius = 0.5;
+
+% WL.cfg.RectWidth = 8;
+% WL.cfg.RectHeight = 1;
 
 WL.cfg.HomeTolerance = WL.cfg.HomeRadius;
-WL.cfg.TargetTolerance	= WL.cfg.TargetRadius;
+%WL.cfg.TargetTolerance	= WL.cfg.TargetRadius;
 WL.cfg.ObjectTolerance	= 0.375; % this is the minimum object radius
 WL.cfg.StationarySpeed = 5; % cm/s
 WL.cfg.StationaryTime = 0.1; % s
 
 % Require movement to end stationary within target?
 WL.cfg.StopAtTarget = true;
+WL.cfg.RequireSlice = ~WL.cfg.StopAtTarget && true;
 
-WL.cfg.MovementReactionTimeOut = 1.0;
-WL.cfg.MovementTooSlowTimeout = 1.0;
-WL.cfg.MovementTooSlowWarning = 0.7;
-WL.cfg.MovementTooFastWarning = 0.3;
-WL.cfg.MovementTooFastTimeout = 0.15;
-WL.cfg.InterTrialDelay = 0.23;
+WL.cfg.ObjectPickupTimeOut = 1.0;
+if WL.cfg.StopAtTarget
+    WL.cfg.MovementReactionTimeOut = 1.0;
+    WL.cfg.MovementTooSlowTimeout = 1.0;
+    WL.cfg.MovementTooSlowWarning = 0.7;
+    WL.cfg.MovementTooFastWarning = 0.3;
+    WL.cfg.MovementTooFastTimeout = 0.15;
+else
+    WL.cfg.MovementReactionTimeOut = 1.0;
+    WL.cfg.MovementTooSlowTimeout = 1.0;
+    WL.cfg.MovementTooSlowWarning = 0.5;
+    WL.cfg.MovementTooFastWarning = 0.1;
+    WL.cfg.MovementTooFastTimeout = 0.05;
+end
+WL.cfg.InterTrialDelay = 0.25;
 WL.cfg.RestBreakSeconds = 45;
 WL.cfg.TrialDelay = 0.15;
 WL.cfg.FinishDelay = 0.1;
@@ -67,20 +83,20 @@ WL.cfg.NumTargets = 5;
 targetspacing = 2*pi/WL.cfg.NumTargets;
 
 WL.cfg.NumObjects = 5;
-% Object radius should be spaced via sqrt, not linear, because perceived size ~ circle area 
-%WL.cfg.ObjectRadius = linspace(1.5*WL.cfg.CursorRadius, 5*WL.cfg.CursorRadius, WL.cfg.NumObjects);
-WL.cfg.ObjectRadius = WL.cfg.CursorRadius*sqrt(linspace(2.25,15,WL.cfg.NumObjects));
+WL.cfg.FieldDirection = 1;
 % Linear family of viscous gains across the objects (NB: centered on baseline gain, see below)
-WL.cfg.ViscousGainModifier = 0.019 * ((1:WL.cfg.NumObjects) - median(1:WL.cfg.NumObjects));
+WL.cfg.ViscousGainModifier = WL.cfg.FieldDirection * 0.019 * ((1:WL.cfg.NumObjects) - median(1:WL.cfg.NumObjects));
+%WL.cfg.ViscousGainModifier = [0 .02 .04 .02 0]; % "Triangle" condition
 % Outlier object
 WL.cfg.OutlierId = 3;
-
-WL.cfg.ObjectHomePosition = [0 0 0]';
-WL.cfg.HomePosition = WL.cfg.ObjectHomePosition + [cos(-pi/4) sin(-pi/4) 0]'*WL.cfg.TargetDistance/3;
-
 % Set the modifier for the outlier, e.g. equal to the greatest gain in the family
 WL.cfg.ViscousGainModifier(WL.cfg.OutlierId) = WL.cfg.ViscousGainModifier(WL.cfg.NumObjects);
 %WL.cfg.ViscousGainModifier(WL.cfg.OutlierId) = 2*WL.cfg.ViscousGainModifier(WL.cfg.NumObjects);
+WL.cfg.ViscousGainSign = ones(1,WL.cfg.NumObjects);
+WL.cfg.ViscousGainSign(WL.cfg.OutlierId) = -1;
+
+WL.cfg.ObjectHomePosition = [0 0 0]';
+WL.cfg.HomePosition = WL.cfg.ObjectHomePosition + [cos(-pi/4) sin(-pi/4) 0]'*WL.cfg.TargetDistance/3;
 
 % Default object color/shape -- override below if desired
 WL.cfg.ObjectInactiveColor = [1 0 1 0.45];
@@ -114,7 +130,7 @@ Field{1}.FieldConstants	= [0 0];
 
 % Viscous curl field
 Field{2}.FieldType = 1;
-Field{2}.FieldConstants	= [0.15 0]; % NB: this is the *baseline* viscous gain (see note above)
+Field{2}.FieldConstants	= [WL.cfg.FieldDirection*0.15 0]; % NB: this is the *baseline* viscous gain (see note above)
 % Field{2}.FieldAngle	= 90.0;
 % Field{2}.Rotation	= 0;
 % Field{2}.FieldMartrix =	eye(3);
@@ -140,7 +156,7 @@ switch upper(cfg_name)
         upperlim = 3*pi/2;
         WL.cfg.TargetAngleRandomShift = lowerlim + rand*(upperlim - lowerlim - targetspacing);
     
-    case {'BASIC','OUT3ISO_S1','OUT3ISO_S2','OUT3ISO_S3','OUT3ISO', 'OUT2ISO','OUT2ISOL'} % fixed 100 - 160 - 220 // 135 - 180 - 225
+    case {'BASIC1','BASIC2','OUT3ISO_S1','OUT3ISO_S2','OUT3ISO_S3','OUT3ISO', 'OUT2ISO','OUT2ISOL'} % fixed 100 - 160 - 220 // 135 - 180 - 225
         targetspacing = pi/4; %pi/3;
         WL.cfg.TargetAngleRandomShift = pi/4; %pi/2+10*pi/180;
         WL.cfg.NumTargets = 8;
@@ -515,12 +531,39 @@ switch upper(cfg_name) % Specify parameters unique to each experiment (VMR/FF)
         T.Timed = ones(rows(T),1);
         
         
-    case 'BASIC'
+    case {'BASIC1', 'BASIC2'}
+        WL.cfg.TargetPositionIndex = 2;
         ExposureFam.Trial.Index.ObjectId = [1 2 4 5];
-        ExposureFam.Trial.Index.TargetAngle = [2 2 2 2];
+        ExposureFam.Trial.Index.TargetAngle = [1 1 1 1]*WL.cfg.TargetPositionIndex;
         ExposureFam.Trial.Index.Field = [2 2 2 2];
         ExposureFam.Permute = true;
         W0 = WL.parse_trials(ExposureFam);
+        
+        FamTest.Trial.Index.ObjectId = [1 2 4 5 1 2 4 5 1 2 4 5];
+        FamTest.Trial.Index.TargetAngle = [1 1 1 1 1 1 1 1 1 1 1 1]*WL.cfg.TargetPositionIndex;
+        FamTest.Trial.Index.Field = [2 2 2 2 2 2 2 2 3 3 3 3];
+        FamTest.Permute = true;
+        FamTest.Location = sparse(length(FamTest.Trial.Index.Field),length(FamTest.Trial.Index.Field));
+        FamTest.Adjacency = sparse(length(FamTest.Trial.Index.Field),length(FamTest.Trial.Index.Field));
+        % Don't put two field trials in a row
+        FamTest.Adjacency(1,5) = 1; FamTest.Adjacency(5,1) = 1;
+        FamTest.Adjacency(2,6) = 1; FamTest.Adjacency(6,2) = 1;
+        FamTest.Adjacency(3,7) = 1; FamTest.Adjacency(7,3) = 1;
+        FamTest.Adjacency(4,8) = 1; FamTest.Adjacency(8,4) = 1;
+        % Don't put channel trial immediately after corresponding field
+        FamTest.Adjacency([1 5], 9) = 1;
+        FamTest.Adjacency([2 6], 10) = 1;
+        FamTest.Adjacency([3 7], 11) = 1;
+        FamTest.Adjacency([4 8], 12) = 1;
+        % Don't put two channel trials in a row
+        FamTest.Adjacency(9, 10:12) = 1;
+        FamTest.Adjacency(10, [9 11 12]) = 1;
+        FamTest.Adjacency(11, [9 10 12]) = 1;
+        FamTest.Adjacency(12, 9:11) = 1;
+        % Don't let channel trials come first (to avoid cross-block problems) 
+        FamTest.Location(9:12,1) = 1;
+        W1 = WL.parse_trials(FamTest);
+        
         
         WA = [];
         for ti = 1:WL.cfg.NumObjects
@@ -528,7 +571,7 @@ switch upper(cfg_name) % Specify parameters unique to each experiment (VMR/FF)
                 continue
             else
                 ExposureAll.Trial.Index.ObjectId = [1 2 3 4 5];
-                ExposureAll.Trial.Index.TargetAngle = [2 2 2 2 2];
+                ExposureAll.Trial.Index.TargetAngle = [1 1 1 1 1]*WL.cfg.TargetPositionIndex;
                 ExposureAll.Trial.Index.Field = [2 2 2 2 2];
                 ExposureAll.Location = sparse(WL.cfg.NumObjects,WL.cfg.NumObjects);
                 ExposureAll.Location(WL.cfg.OutlierId,2:WL.cfg.NumObjects) = 1; % outlier should only appear in slot 1
@@ -543,36 +586,55 @@ switch upper(cfg_name) % Specify parameters unique to each experiment (VMR/FF)
         % WC has 4 different "test orders" that are sampled without replacement
         % 4*WC gives you one of each
 
-        ExposureTest.Trial.Index.ObjectId = [1 2 3 4 5 1 2 3 4 5 1 2 3 4 5];
-        ExposureTest.Trial.Index.TargetAngle = [2 2 2 2 2 2 2 2 2 2 2 2 2 2 2];
-        ExposureTest.Trial.Index.Field = [2 2 2 2 2 2 2 2 2 2 3 3 3 3 3];
+        ExposureTest.Trial.Index.ObjectId = [1 2 3 4 5 1 2 3 4 5 1 2 3 4 5 1 2 3 4 5];
+        ExposureTest.Trial.Index.TargetAngle = [1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1]*WL.cfg.TargetPositionIndex;
+        ExposureTest.Trial.Index.Field = [2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 3 3 3 3 3];
         ExposureTest.Permute = true;
         ExposureTest.Location = sparse(length(ExposureTest.Trial.Index.Field),length(ExposureTest.Trial.Index.Field));
         ExposureTest.Adjacency = sparse(length(ExposureTest.Trial.Index.Field),length(ExposureTest.Trial.Index.Field));
         % Don't put two field trials in a row
         ExposureTest.Adjacency(1,6) = 1; ExposureTest.Adjacency(6,1) = 1;
-        ExposureTest.Adjacency(2,7) = 1; ExposureTest.Adjacency(2,7) = 1;
-        ExposureTest.Adjacency(3,8) = 1; ExposureTest.Adjacency(3,8) = 1;
-        ExposureTest.Adjacency(4,9) = 1; ExposureTest.Adjacency(4,9) = 1;
+        ExposureTest.Adjacency(2,7) = 1; ExposureTest.Adjacency(7,2) = 1;
+        ExposureTest.Adjacency(3,8) = 1; ExposureTest.Adjacency(8,3) = 1;
+        ExposureTest.Adjacency(4,9) = 1; ExposureTest.Adjacency(9,4) = 1;
         ExposureTest.Adjacency(5,10) = 1; ExposureTest.Adjacency(10,5) = 1;
+        
+        ExposureTest.Adjacency(1,11) = 1; ExposureTest.Adjacency(11,1) = 1;
+        ExposureTest.Adjacency(2,12) = 1; ExposureTest.Adjacency(12,2) = 1;
+        ExposureTest.Adjacency(3,13) = 1; ExposureTest.Adjacency(13,3) = 1;
+        ExposureTest.Adjacency(4,14) = 1; ExposureTest.Adjacency(14,4) = 1;
+        ExposureTest.Adjacency(5,15) = 1; ExposureTest.Adjacency(15,5) = 1;
+        
+        ExposureTest.Adjacency(6,11) = 1; ExposureTest.Adjacency(11,6) = 1;
+        ExposureTest.Adjacency(7,12) = 1; ExposureTest.Adjacency(12,7) = 1;
+        ExposureTest.Adjacency(8,13) = 1; ExposureTest.Adjacency(13,8) = 1;
+        ExposureTest.Adjacency(9,14) = 1; ExposureTest.Adjacency(14,9) = 1;
+        ExposureTest.Adjacency(10,15) = 1; ExposureTest.Adjacency(15,10) = 1;
         % Don't put channel trial immediately after corresponding field
-        ExposureTest.Adjacency([1 6], 11) = 1;
-        ExposureTest.Adjacency([2 7], 12) = 1;
-        ExposureTest.Adjacency([3 8], 13) = 1;
-        ExposureTest.Adjacency([4 9], 14) = 1;
-        ExposureTest.Adjacency([5 10], 15) = 1;
+        ExposureTest.Adjacency([1 6 11], 16) = 1;
+        ExposureTest.Adjacency([2 7 12], 17) = 1;
+        ExposureTest.Adjacency([3 8 13], 18) = 1;
+        ExposureTest.Adjacency([4 9 14], 19) = 1;
+        ExposureTest.Adjacency([5 10 15], 20) = 1;
         % Don't put two channel trials in a row
-        ExposureTest.Adjacency(11, 12:15) = 1;
-        ExposureTest.Adjacency(12, [11 13 14 15]) = 1;
-        ExposureTest.Adjacency(13, [11 12 14 15]) = 1;
-        ExposureTest.Adjacency(14, [11 12 13 15]) = 1;
-        ExposureTest.Adjacency(15, 11:14) = 1;
+        ExposureTest.Adjacency(16, 17:20) = 1;
+        ExposureTest.Adjacency(17, [16 18 19 20]) = 1;
+        ExposureTest.Adjacency(18, [16 17 19 20]) = 1;
+        ExposureTest.Adjacency(19, [16 17 18 20]) = 1;
+        ExposureTest.Adjacency(20, 16:19) = 1;
         % Don't let channel trials come first (to avoid cross-block problems) 
-        ExposureTest.Location(11:15,1) = 1;
+        ExposureTest.Location(16:20,1) = 1;
         
         WB = WL.parse_trials(ExposureTest);
         
-        T = parse_tree( 20*W0 + 40*WC + 10*WB );
+        if strcmpi(cfg_name,'BASIC1')
+            %T = parse_tree( 30*W0 + 10*W1); %240 (50 fam reps + some channels)
+            T = parse_tree( 20*WC + 'R' + 40*WC); %300 (60 reps)
+        elseif strcmpi(cfg_name,'BASIC2')
+            %T = parse_tree( 40*WC + 'R' + 20*WC + 10*WB ); % 440 (80 all reps + some channels)
+            T = parse_tree( 40*WC + 12*WB ); %440 (70 more reps + channels)
+        end
+        %T = parse_tree( 16*WC + 10*WB );
         
         T.Timed = zeros(rows(T),1);
         
@@ -614,19 +676,39 @@ end
 z = zeros(rows(T),1);
 
 %create more table parameters
-R = [cos(T.TargetAngle) sin(T.TargetAngle) z];
-T.TargetPosition = bsxfun(@plus, bsxfun(@times, WL.cfg.TargetDistance,R), WL.cfg.ObjectHomePosition');
+% R = [cos(T.TargetAngle) sin(T.TargetAngle) z];
+% T.TargetPosition = bsxfun(@plus, bsxfun(@times, WL.cfg.TargetDistance,R), WL.cfg.ObjectHomePosition');
+% WL.cfg.TargetPositions = unique(T.TargetPosition, 'rows');
+
+if strcmpi(WL.cfg.Feature,'location')
+    %xoffsets = linspace(-1, -WL.cfg.RectWidth+1, WL.cfg.NumObjects);
+    WL.cfg.Offsets = linspace(-1, -9, WL.cfg.NumObjects);
+    WL.cfg.DrawInactiveTargets = false;
+    WL.cfg.ObjectRadius = repelem(0.5,WL.cfg.NumObjects);
+elseif strcmpi(WL.cfg.Feature,'size')
+    WL.cfg.Offsets = repelem(0, WL.cfg.NumObjects);
+    WL.cfg.DrawInactiveTargets = true;
+    % Object radius should be spaced via sqrt, not linear, because perceived size ~ circle area 
+    WL.cfg.ObjectRadius = WL.cfg.CursorRadius*sqrt(linspace(2.25,15,WL.cfg.NumObjects));
+end
+T.ObjectRadius = WL.cfg.ObjectRadius(T.ObjectId)';
+T.ObjectOffset = WL.cfg.Offsets(T.ObjectId)' .* [cos(T.TargetAngle-pi/2) sin(T.TargetAngle-pi/2) zeros(size(T,1),1)];
+T.ObjectOffset(:,3) = -T.ObjectRadius;
+T.TargetPosition = WL.cfg.ObjectHomePosition' + T.ObjectOffset + WL.cfg.TargetDistance * [cos(T.TargetAngle) sin(T.TargetAngle) zeros(size(T,1),1)];
 WL.cfg.TargetPositions = unique(T.TargetPosition, 'rows');
+T.TargetAngleDegreesCentered = 180/pi * (T.TargetAngle-pi/2);
 
 %T.ObjectReactionTime = z;
 T.MovementReactionTime = z;
 T.MovementDurationTime = z;
+T.Cross = [z z];
 
 % Update field constants according to family modifiers
 T.FieldConstants(T.FieldType==1, 1) = T.FieldConstants(T.FieldType==1, 1) + WL.cfg.ViscousGainModifier(T.ObjectId(T.FieldType==1))';
-T.ObjectRadius = WL.cfg.ObjectRadius(T.ObjectId)';
+T.FieldConstants(T.FieldType==1, 1) = T.FieldConstants(T.FieldType==1, 1).*WL.cfg.ViscousGainSign(T.ObjectId(T.FieldType==1))';
 
-T.TrialNumber = (1:size(T,1))';
+WL.cfg.NumTrials = size(T,1);
+T.TrialNumber = (1:WL.cfg.NumTrials)';
 %T.ObjectRotate = randi(360,size(T,1),1);
 
 %add passive return movements
