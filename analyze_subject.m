@@ -156,7 +156,7 @@ function TrialData = analyze_subject(subi,sesi,fn,varargin)
                 % Manual cropping using custom criteria (requires trajectory rotation to pi/2)  
                 % (note that cropping based on WL State == MOVING doesn't work well) 
                 ystartmove = 0.5;
-                yendmove = 9.5;
+                yendmove = 9.3;
                 ystart = y > ystartmove;
                 ystartcell = mat2cell(ystart,ones(size(ystart,1),1));
                 startframe = cellfun(@(x) find(x,1), ystartcell);

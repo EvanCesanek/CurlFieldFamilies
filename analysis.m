@@ -3,30 +3,70 @@ clc
 colors = parula(6); colors = colors(1:5,:);
 
 %% Single subject
-TrialData = analyze_subject(1,1,'eac_locstopbasic');
+%TrialData = analyze_subject(1,1,'eac_locstop2');
+%TrialData = analyze_subject(1,1,'eac_locstopXL');
+%TrialData = analyze_subject(1,1,'eac_locsliceTRI');
+TrialData = analyze_subject(1,1,'eac_locstopTRI');
+
+%TrialData = analyze_subject(1,1,'zz_locstop');
+
+% subi = 0;
+% for sub = {'eac_locstop2','eac_locstopTRI'}
+%     subi = subi+1;
+%     sesi = 1;
+%     fn = sub{1};
+%     fprintf('\nProcessing %s\n',fn);
+%     td = analyze_subject(subi,sesi,fn);
+%     if subi==1 && sesi==1
+%         TrialData = td;
+%     else
+%         TrialData = [TrialData; td];
+%     end
+% end
 
 %% Batch
+% subi = 0;
+% for sub = {'atf','ck','vp','ik','dg'}
+%     subi = subi+1;
+%     sesi = 0;
+%     for ses = {'_s1.mat','_s2.mat','_s3.mat'}
+%         sesi = sesi+1;
+%         fn = [sub{1} ses{1}];
+% 
+%         fn2 = [];
+%         if strcmpi(fn,'atf_s1.mat')
+%             fn2 = 'atf_s1b.mat';
+%         elseif strcmpi(fn,'vp_s2.mat')
+%             fn2 = 'vp_s2b.mat';
+%         end
+% 
+%         fprintf('\nProcessing %s\n',fn);
+% 
+%         td = analyze_subject(subi,sesi,fn,fn2);
+%         if subi==1 && sesi==1
+%             TrialData = td;
+%             TrialData.Timed = ones(size(TrialData,1),1);
+%         else
+%             TrialData = [TrialData; td];
+%         end
+%     end
+% end
+
 subi = 0;
-for sub = {'atf','ck','vp','ik','dg'}
+for sub = {'lr','ta'}
     subi = subi+1;
     sesi = 0;
-    for ses = {'_s1.mat','_s2.mat','_s3.mat'}
+    for ses = {'1.mat','2.mat'}
         sesi = sesi+1;
         fn = [sub{1} ses{1}];
 
         fn2 = [];
-        if strcmpi(fn,'atf_s1.mat')
-            fn2 = 'atf_s1b.mat';
-        elseif strcmpi(fn,'vp_s2.mat')
-            fn2 = 'vp_s2b.mat';
-        end
 
         fprintf('\nProcessing %s\n',fn);
 
         td = analyze_subject(subi,sesi,fn,fn2);
         if subi==1 && sesi==1
             TrialData = td;
-            TrialData.Timed = ones(size(TrialData,1),1);
         else
             TrialData = [TrialData; td];
         end
@@ -81,10 +121,10 @@ clf;
 % Set TrialData.TargetAngle~=pi/2 for MPE on field trials to peripheral targets
 
 % Batch - before channel phase:
-subset = ~TrialData.MissTrial & ~TrialData.ChannelTrial & TrialData.TargetAngle==pi/2 & ...
-    (   (TrialData.Session==1 & ismember(TrialData.block_count,81:100)) | ...
-        (TrialData.Session==2 & ismember(TrialData.block_count,36:50)) | ...
-        (TrialData.Session==3 & ismember(TrialData.block_count,26:40))    );
+% subset = ~TrialData.MissTrial & ~TrialData.ChannelTrial & TrialData.TargetAngle==pi/2 & ...
+%     (   (TrialData.Session==1 & ismember(TrialData.block_count,81:100)) | ...
+%         (TrialData.Session==2 & ismember(TrialData.block_count,36:50)) | ...
+%         (TrialData.Session==3 & ismember(TrialData.block_count,26:40))    );
 
 % Batch - during channel phase:
 % subset = ~TrialData.MissTrial & ~TrialData.ChannelTrial & TrialData.TargetAngle==pi/2 & ...
@@ -92,14 +132,15 @@ subset = ~TrialData.MissTrial & ~TrialData.ChannelTrial & TrialData.TargetAngle=
 %         (TrialData.Session==2 & TrialData.block_count>50) | ...
 %         (TrialData.Session==3 & TrialData.block_count>40)    );
 
-% Additional - other periods:
+% Second batch (length objects)
 subset = ~TrialData.MissTrial & ~TrialData.ChannelTrial & TrialData.TargetAngle==pi/2 & ... 
-    (TrialData.Session==1 & ismember(TrialData.block_count,1:16));
-
-%     (TrialData.Session==1 & ismember(TrialData.block_count,1:16));
+    (TrialData.Session==1 & ismember(TrialData.block_count,71:80));
+    %(TrialData.Session==2 & ismember(TrialData.block_count,41:52));
+    %(TrialData.Session==1 & ismember(TrialData.block_count,51:60));
+%     (TrialData.Session==2 & ismember(TrialData.block_count,1:16));
 %     (TrialData.Session==1 & ismember(TrialData.block_count,46:60));
-%     (TrialData.Session==1 & ismember(TrialData.block_count,61:70));
-    
+%     (TrialData.Session==2 & ismember(TrialData.block_count,41:52));
+
 g1 = gramm('x',TrialData.ObjectId(subset),'y',TrialData.MPE(subset),'color',TrialData.ObjectId(subset),...
     'row',TrialData.Subject(subset),'column',TrialData.Session(subset));
 g1.axe_property('YLim',[-1.5 1],'XLim',[0.5 5.5]);
@@ -121,7 +162,7 @@ g1.draw();
 %% Channel Trials - exclude outliers (grouped subject x object x target x session)
 subset = ~TrialData.MissTrial & TrialData.ChannelTrial;
 [groups,s,o,t,ss] = findgroups(TrialData.Subject(subset),TrialData.ObjectId(subset),TrialData.TargetAngle(subset), TrialData.Session(subset));
-a = splitapply(@(x1){isoutlier(x1,'median','ThresholdFactor',4)},TrialData.CumForce(subset),groups);
+a = splitapply(@(x1){isoutlier(x1,'median','ThresholdFactor',5)},TrialData.CumForce(subset),groups);
 for k = 1:length(a)
     tmp = TrialData.CumForce(subset & TrialData.Subject==s(k) & TrialData.ObjectId==o(k) & TrialData.TargetAngle==t(k) & TrialData.Session==ss(k));
     tmp(a{k}) = NaN;
@@ -176,7 +217,7 @@ ndat = sum(sel);
 nses = length(unique(ss(sel)));
 nsub = length(unique(s(sel)));
 
-if length(c)>5
+if max(TrialData.Session)==3
     % Getting the outlier cum force on the right panels is tricky
     if loc==1 % the outlier location is easy because we don't need to skip any panels
         x = o;
@@ -202,7 +243,7 @@ if length(c)>5
     
 else
     % Very simple when it's one subject one session, just one data point
-    g1.update('x',3,'y',c(o==3));
+    g1.update('x',repelem(3,nsub),'y',c(o==3),'row',s(o==3));
 end
 
 g1.set_color_options('map',colors*0);
