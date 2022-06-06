@@ -21,13 +21,16 @@ classdef DynamicsExample < wl_experiment_v1_6
         
         MPEBuffer = [];
         ScoreBuffer = [];
+        Score = [];
+        MissWarn = false;
+        RobotPreviousPosition = [0 0];
     end
     methods
         % must implement ALL abstract methods or matlab will complain.
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         function run(WL, varargin)
             try
-                WL.GUI = wl_gui('DynamicsExample', 'test', 'cfg_DynamicsExample', 'OUT3ISO', varargin{:});
+                WL.GUI = wl_gui('DynamicsExample', 'test', 'cfg_DynamicsExample', 'BASIC1', varargin{:});
                 % These are custom parameters specific for this experiment.
                 WL.GUI.addParam('array', 'trials_to_run', []);
                 WL.GUI.addParam('numeric', 'reload_table', 0);
@@ -74,7 +77,7 @@ classdef DynamicsExample < wl_experiment_v1_6
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         function my_initialise(WL, varargin)
             WL.state_init('INITIALIZE','SETUP','HOME','OBJECT','START','DELAY','GO','MOVEWAIT',...
-                'MOVING','FINISH','NEXT','INTERTRIAL','EXIT','TIMEOUT','ERROR','REST');
+                'MOVING','EXPLODE','FINISH','NEXT','INTERTRIAL','EXIT','TIMEOUT','ERROR','REST');
             % Stimulus frame counter.
             WL.FrameCounter.Stimulus = wl_frame_counter();
             WL.Timer.Stimulus = wl_timer;
@@ -82,11 +85,15 @@ classdef DynamicsExample < wl_experiment_v1_6
             WL.Timer.ObjectPulseTimer = wl_timer;
             WL.ObjectColor = WL.cfg.ObjectActiveColor;
             WL.StreakPosnPx = WL.cm2pix(WL.cfg.HomePosition);
+            
+            WL.MPEBuffer = nan(1,WL.cfg.NumTrials);
+            WL.ScoreBuffer = nan(1,WL.cfg.NumTrials);
         end
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         function idle_func(WL)
             ok = WL.Hardware.GetLatest(WL);
             WL.state_process();
+            WL.RobotPreviousPosition = WL.Robot.Position; %AFTER state_process
         end
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         function keyboard_func(WL,keyname)
@@ -104,7 +111,7 @@ classdef DynamicsExample < wl_experiment_v1_6
             Screen('BeginOpenGL', WL.Screen.window);
             
             if WL.State.Current >= WL.State.START && WL.State.Current <= WL.State.MOVING
-                WL.ObjectPosition = WL.Robot.Position;
+                WL.ObjectPosition = WL.Robot.Position + WL.Trial.ObjectOffset;
             end
 
             if WL.State.Current > WL.State.OBJECT && WL.State.Current <= WL.State.MOVING
@@ -127,7 +134,7 @@ classdef DynamicsExample < wl_experiment_v1_6
                     % Draw the current target brightly after the object has been grabbed
                     if WL.GW.display_target && all(tmp==WL.Trial.TargetPosition')
                         wl_draw_sphere(WL.Trial.TargetPosition, WL.cfg.TargetRadius, [1 1 0.0], 'Alpha', 1);
-                    else % draw the inactive targets dimly
+                    elseif WL.cfg.DrawInactiveTargets % draw the inactive targets dimly
                         wl_draw_sphere(WL.cfg.TargetPositions(ti,:), WL.cfg.TargetRadius, [0.6 0.6 0.0], 'Alpha', 0.2);
                     end
                 end
@@ -137,22 +144,34 @@ classdef DynamicsExample < wl_experiment_v1_6
             if WL.GW.display_object
                 if ~isempty(WL.Explosion) && WL.State.Current > WL.State.MOVING
                     WL.Explosion.ExplodeProcess(WL);
+                    if WL.MissWarn
+                        wl_draw_sphere(WL.ObjectPosition, WL.ObjectRadius, WL.ObjectColor(1:3), 'Alpha', WL.ObjectColor(4));
+                        wl_draw_rectangle_gl([WL.ObjectPosition(1:2) - WL.Trial.ObjectOffset(1:2); 0], -WL.Trial.ObjectOffset(1), WL.ObjectRadius, WL.Trial.TargetAngleDegreesCentered, WL.ObjectColor(1:3), [1 0.5], 'Alpha', 1);
+                    end
                 else
                     wl_draw_sphere(WL.ObjectPosition, WL.ObjectRadius, WL.ObjectColor(1:3), 'Alpha', WL.ObjectColor(4));
+                    if strcmpi(WL.cfg.Feature,'location')
+                        if WL.State.Current == WL.State.OBJECT
+                            wl_draw_sphere(WL.cfg.ObjectHomePosition, WL.cfg.CursorRadius, [1 1 1], 'Alpha', 0.7)
+                            wl_draw_rectangle_gl(WL.cfg.ObjectHomePosition + [0 0 -WL.Trial.ObjectRadius]', -WL.cfg.Offsets(WL.Trial.ObjectId), WL.ObjectRadius, WL.Trial.TargetAngleDegreesCentered, WL.ObjectColor(1:3), [1 0.5], 'Alpha', 1);
+                        else
+                            wl_draw_rectangle_gl(WL.Robot.Position + [0 0 -WL.Trial.ObjectRadius]', -WL.cfg.Offsets(WL.Trial.ObjectId), WL.ObjectRadius, WL.Trial.TargetAngleDegreesCentered, WL.ObjectColor(1:3), [1 0.5], 'Alpha', 1);
+                        end
+                    end
                 end
             end
             
-            if WL.State.Current > WL.State.FINISH || (WL.State.Current<WL.State.OBJECT && ~isempty(WL.ScoreBuffer))
-                WL.draw_text(sprintf('+%i',WL.ScoreBuffer(end)), 'center', 'center', 'fontsize', 20, 'col', [1 1 1 max(0, 1-WL.Timer.ScoreFade.GetTime())]);
+            if ~isempty(WL.Score)
+                WL.draw_text(sprintf('+%i',WL.Score), WL.StreakPosnPx(1), WL.StreakPosnPx(2), 'col', [1 1 1 max(0, 1-WL.Timer.ScoreFade.GetTime())]);
             end
+            WL.draw_text(sprintf('Score: %i', nansum(WL.ScoreBuffer)), WL.StreakPosnPx(1), WL.StreakPosnPx(2)+180, 'fontsize',16, 'col', WL.StreakColor);
             
             Screen('EndOpenGL',WL.Screen.window)
             txt = sprintf('Trial = %i State = %s', WL.TrialNumber, WL.State.Name{WL.State.Current});
             
-            WL.draw_text(txt, 'center', 100, 'col', [1 1 1]);
+            %WL.draw_text(txt, 'center', 100, 'col', [1 1 1]);
             WL.draw_text(txt, 20, WL.Screen.windowRect(4)-30, 'fontsize', 12, 'fliph', 0,'flipv', 0, 'col', [1 1 1]);
-            WL.draw_text(sprintf('Total Score: %i', sum(WL.ScoreBuffer)), 'center', 140, 'col', WL.StreakColor);
-            WL.draw_text(sprintf('%i',WL.Streak), WL.StreakPosnPx(1), WL.StreakPosnPx(2), 'col', WL.StreakColor);
+            %WL.draw_text(sprintf('%i',WL.Streak), WL.StreakPosnPx(1), WL.StreakPosnPx(2), 'col', WL.StreakColor);
         end
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         function state_process(WL)
@@ -178,7 +197,8 @@ classdef DynamicsExample < wl_experiment_v1_6
                         WL.HomeColor = WL.HomeInactiveColor;
                         %WL.ObjectColor = WL.cfg.ObjectInactiveColor;
                         % object is initialized below the cursor to make it easier to see
-                        WL.ObjectPosition = WL.cfg.ObjectHomePosition + [0 0 -WL.Trial.ObjectRadius]';
+                        %WL.ObjectPosition = WL.cfg.ObjectHomePosition + [0 0 -WL.Trial.ObjectRadius]';
+                        WL.ObjectPosition = WL.cfg.ObjectHomePosition + WL.Trial.ObjectOffset;% + [0 0 -WL.Trial.ObjectRadius]';
                         WL.ObjectRadius = WL.Trial.ObjectRadius;
                         WL.FrameCounter.Stimulus.ResetCount();
                         WL.FrameCounter.Stimulus.StartCount();
@@ -196,6 +216,8 @@ classdef DynamicsExample < wl_experiment_v1_6
                         WL.Timer.ObjectPulseTimer.Reset();
                         WL.state_next(WL.State.MOVEWAIT);
                         %WL.state_next(WL.State.START);
+%                     elseif WL.State.Timer.GetTime > WL.cfg.ObjectPickupTimeOut
+%                         WL.state_next(WL.State.TIMEOUT);
                     end
                     
 %                 case WL.State.START % Start trial.
@@ -251,30 +273,42 @@ classdef DynamicsExample < wl_experiment_v1_6
                             WL.play_sound(WL.cfg.placebeep);
                         end
                         
+                        WL.ObjectPosition = WL.Robot.Position + WL.Trial.ObjectOffset; % Update for the last time
                         if ~isempty(WL.Explosion)
-                            WL.Explosion.ExplodePop(WL.Robot.Position);
-                        else
-                            WL.ObjectPosition = WL.Robot.Position; % Update for the last time
+                            WL.Explosion.ExplodePop(WL.ObjectPosition);
                         end
-                        WL.HomeColor = WL.HomeActiveColor;
-                        %WL.ObjectColor = WL.cfg.ObjectInactiveColor;
                         WL.Trial.MovementDurationTime = WL.Timer.MovementDurationTimer.GetTime();
                         if( WL.Trial.FieldType ~= 3 ) % Not a PMove trial
                             WL.Trial.StimulusFrameCount = WL.FrameCounter.Stimulus.GetCount();
                             WL.Trial.StimulusTime = WL.Timer.Stimulus.Toc();
                             %WL.printf('Stimulus on for %d frames, %.3f ms (%.1f Hz).\n',WL.Trial.StimulusFrameCount,WL.Trial.StimulusTime,WL.Trial.StimulusFrameCount/WL.Trial.StimulusTime);
                         end
-                        WL.state_next(WL.State.FINISH);
+                        WL.state_next(WL.State.EXPLODE);
                     elseif WL.Timer.MovementDurationTimer.GetTime > 2.5 || (WL.Trial.Timed && WL.Timer.MovementDurationTimer.GetTime > WL.cfg.MovementTooSlowTimeout)
                         WL.MovementDurationTimeoutMessage = 'Too Slow';
                         WL.update_streak(0);
                         WL.state_next(WL.State.TIMEOUT);
+                    elseif ~WL.cfg.StopAtTarget && WL.cfg.RequireSlice && norm(WL.Robot.Position-WL.cfg.ObjectHomePosition) > WL.cfg.TargetDistance
+                        WL.ObjectPosition = WL.Robot.Position + WL.Trial.ObjectOffset; % Update for the last time
+                        ok = WL.Robot.RampDown();
+                        WL.MissWarn = true;
+                        WL.play_sound(WL.cfg.tooslowbeep);
+                        WL.Trial.MovementDurationTime = WL.Timer.MovementDurationTimer.GetTime();
+                        if( WL.Trial.FieldType ~= 3 ) % Not a PMove trial
+                            WL.Trial.StimulusFrameCount = WL.FrameCounter.Stimulus.GetCount();
+                            WL.Trial.StimulusTime = WL.Timer.Stimulus.Toc();
+                        end
+                        WL.state_next(WL.State.FINISH);
+                    end
+                    
+                case WL.State.EXPLODE
+                    if WL.Explosion.ExplodeState==4
+                        WL.state_next(WL.State.FINISH);
                     end
                     
                 case WL.State.FINISH
                     %[ok, WL.GW.FrameData, names] = WL.Hardware.DataGet(); %doesn't work (or work fast enough?)
                     if WL.State.Timer.GetTime > WL.cfg.FinishDelay % Trial has finished so stop trial.
-                        %ok = WL.Robot.RampDown();
                         WL.trial_stop();
                         WL.Timer.Paradigm.InterTrialDelayTimer.Reset;
                         
@@ -288,15 +322,29 @@ classdef DynamicsExample < wl_experiment_v1_6
 %                             if  WL.Trial.MovementDurationTime >= WL.cfg.MovementDurationTimeOut && (WL.Trial.FieldType ~= 3)
 %                                 WL.error_state( 'Moved Too Slow',WL.State.NEXT);
 %                             else
-                            WL.MPEBuffer = [WL.MPEBuffer WL.compute_mpe(WL.Trial.TargetAngle)];
-                            WL.ScoreBuffer = [WL.ScoreBuffer round(max(0,100-100*WL.MPEBuffer(end)))];
+
+                            WL.MPEBuffer(WL.Trial.TrialNumber) = WL.compute_mpe(WL.Trial.TargetAngle);
+                            WL.Score = round(max(0,100-100*WL.MPEBuffer(WL.Trial.TrialNumber)));
+                            if WL.MissWarn
+                                WL.Score = 0;
+                            end
+                            WL.ScoreBuffer(WL.Trial.TrialNumber) = WL.Score;
                             WL.Timer.ScoreFade.Reset();
+
                             WL.state_next(WL.State.NEXT);
 %                             end
                         end
                     end
                     
                 case WL.State.NEXT
+                    if WL.MissWarn
+                        if WL.State.Timer.GetTime < 2
+                            WL.cfg.ClearColor(1) = abs(cos(WL.State.Timer.GetTime*4*pi)-1)/6;
+                            return;
+                        else
+                            WL.cfg.ClearColor(1) = 0;
+                        end
+                    end
                     if WL.Trial.RestFlag==1
                         WL.state_next(WL.State.REST);
                     elseif  ~WL.trial_next()
@@ -367,7 +415,7 @@ classdef DynamicsExample < wl_experiment_v1_6
                           0  0  0 ];
                     ok = WL.Robot.FieldViscous(ViscousMatrix);
                 case 2 % Channel
-                    ok = WL.Robot.FieldChannel(WL.Trial.TargetPosition,WL.Trial.FieldConstants(1),WL.Trial.FieldConstants(2));
+                    ok = WL.Robot.FieldChannel(WL.Trial.TargetPosition - WL.Trial.ObjectOffset,WL.Trial.FieldConstants(1),WL.Trial.FieldConstants(2));
                 case 3 % Passive return movement
                     ok = WL.Robot.FieldPMove(WL.Trial.TargetPosition,0.5,0.2);
             end
@@ -376,6 +424,7 @@ classdef DynamicsExample < wl_experiment_v1_6
             %WL.printf('RobotField=%d, Started=%d\n',WL.Trial.FieldType,ok);
             
             WL.Explosion = wl_explode(WL.Trial.ObjectRadius,WL.cfg.ObjectActiveColor,sqrt(WL.Trial.ObjectRadius^2/16));
+            WL.MissWarn = false;
             
             ok = WL.Robot.RampUp();
             WL.GW.TrialRunning = true;
@@ -397,11 +446,25 @@ classdef DynamicsExample < wl_experiment_v1_6
         end
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         function out = movement_finished(WL,StopAtTarget)
-            err = norm(WL.Robot.Position(1:2) - WL.Trial.TargetPosition(1:2));
             if (StopAtTarget)
-                out = (err < WL.cfg.TargetTolerance) && WL.robot_stationary();
+                err = norm(WL.ObjectPosition(1:2) - WL.Trial.TargetPosition(1:2));
+                out = (err < WL.cfg.CursorRadius+WL.cfg.TargetRadius) &&  WL.robot_stationary();
             else
-                out = (err < WL.cfg.TargetTolerance);
+                if (norm(WL.Robot.Position-WL.cfg.ObjectHomePosition) > WL.cfg.TargetDistance)
+                    d = WL.Robot.Position(1:2) - WL.RobotPreviousPosition(1:2);
+                    f = WL.RobotPreviousPosition(1:2) - WL.cfg.ObjectHomePosition(1:2);
+                    a = d' * d;
+                    b = 2 * (f' * d);
+                    c = f' * f - (WL.cfg.TargetDistance^2);
+                    discriminant = sqrt(b*b-4*a*c);
+                    t = (-b + discriminant) / (2 * a);
+                    WL.Trial.Cross = WL.RobotPreviousPosition(1:2) + t*d;
+                    err = norm(WL.Trial.Cross + WL.Trial.ObjectOffset(1:2) - WL.Trial.TargetPosition(1:2));
+                    %err = norm(WL.ObjectPosition(1:2) - WL.Trial.TargetPosition(1:2));
+                    out = (err < WL.cfg.CursorRadius+WL.cfg.TargetRadius);
+                else
+                    out = false;
+                end
             end
         end
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

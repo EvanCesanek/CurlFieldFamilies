@@ -72,6 +72,7 @@ function TrialData = analyze_subject(subi,sesi,fn,varargin)
     TrialData.Session = repelem(sesi,size(TrialData,1),1);
     TrialData.Subject = repelem(subi,size(TrialData,1),1);
     TrialData.ChannelTrial = TrialData.FieldType==2;
+    TrialData.FieldDirection = sign(TrialData.FieldConstants(:,1));
     
     %% Preprocess
     angles = unique(TrialData.TargetAngle)';
@@ -86,7 +87,11 @@ function TrialData = analyze_subject(subi,sesi,fn,varargin)
     TrialData.ForceIdealInterp = nan(size(TrialData,1),interplength);
     
     objectviscousgain = nan(numobjects,1);
-    outlierinterpviscousgain = 0.15;
+    tmp = unique(TrialData.FieldDirection(~TrialData.ChannelTrial & TrialData.ObjectId~=3));
+    if length(tmp)~=1
+        warning('ERROR: Family objects do not all share same field direction.');
+    end
+    outlierinterpviscousgain = 0.15*tmp;
     
     for ai = 1:length(angles)
         target = TrialData.TargetAngle==angles(ai); %abs(TrialData.TargetAngle-angles(ai))<0.0001;
@@ -141,7 +146,11 @@ function TrialData = analyze_subject(subi,sesi,fn,varargin)
                 for ti = 1:length(thetas)
                     z = zeros(1,size(x,2));
                     rotationangle = -(thetas(ti) - pi/2)*180/pi;
-                    rotmat = rotz(rotationangle);
+                    if exist('rotz','builtin')
+                        rotmat = rotz(rotationangle);
+                    else
+                        rotmat = EulerRotationMatrix('z',rotationangle);
+                    end
                     xyz_r = rotmat * [x(ti,:); y(ti,:); z];
                     xyzv_r = rotmat * [xv(ti,:); yv(ti,:); z];
                     xyzf_r = rotmat * [xf(ti,:); yf(ti,:); z];
@@ -156,7 +165,7 @@ function TrialData = analyze_subject(subi,sesi,fn,varargin)
                 % Manual cropping using custom criteria (requires trajectory rotation to pi/2)  
                 % (note that cropping based on WL State == MOVING doesn't work well) 
                 ystartmove = 0.5;
-                yendmove = 9.5;
+                yendmove = 9;
                 ystart = y > ystartmove;
                 ystartcell = mat2cell(ystart,ones(size(ystart,1),1));
                 startframe = cellfun(@(x) find(x,1), ystartcell);
@@ -187,12 +196,12 @@ function TrialData = analyze_subject(subi,sesi,fn,varargin)
     
                 % Compute integral of force wrt time
                 xfcum = sum( (xf+[diff(xf,[],2)/2 nan(size(xf,1),1)]) .* [diff(t,[],2) nan(size(xf,1),1)], 2, 'omitnan');
-                xfidealcum = -sum( (xfideal+[diff(xfideal,[],2)/2 nan(size(xf,1),1)]) .* [diff(t,[],2) nan(size(xf,1),1)], 2, 'omitnan');
+                xfidealcum = -unique(TrialData.FieldDirection(trialsel))*sum( (xfideal+[diff(xfideal,[],2)/2 nan(size(xf,1),1)]) .* [diff(t,[],2) nan(size(xf,1),1)], 2, 'omitnan');
                 xfinterpideal = -objectviscousgain(oi)*yv; % Compute ideal force profile, based on ASSUMED INTERPOLATED GAIN and y-velocity profiles
                 if oi==3
                     xfinterpideal = -outlierinterpviscousgain*yv; % interpolated viscous gain for the outlier
                 end
-                xfidealinterpcum = -sum( (xfinterpideal+[diff(xfinterpideal,[],2)/2 nan(size(xf,1),1)]) .* [diff(t,[],2) nan(size(xf,1),1)], 2, 'omitnan');
+                xfidealinterpcum = sum( (xfinterpideal+[diff(xfinterpideal,[],2)/2 nan(size(xf,1),1)]) .* [diff(t,[],2) nan(size(xf,1),1)], 2, 'omitnan');
                 TrialData.CumForce(trialsel) = xfcum-xfidealcum+mean(xfidealcum); % Compute it as a within-trial difference, and add the mean back on (so it's positive linear, not error clustered around 0)
                 TrialData.IdealCumForce(trialsel) = mean(xfidealcum);
                 TrialData.IdealInterpCumForce(trialsel) = mean(xfidealinterpcum);
@@ -204,13 +213,18 @@ function TrialData = analyze_subject(subi,sesi,fn,varargin)
     
                 % Perpendicular errors (terminal, maximum, and at peak velocity) 
                 TrialData.TPE(trialsel) = x(sub2ind(size(t),1:size(t,1),cellfun(@(x) find(~isnan(x),1,'last'), num2cell(t',1))));
-                TrialData.MPE(trialsel) = min(x,[],2);
+                if unique(TrialData.FieldDirection(trialsel)==1)
+                    TrialData.MPE(trialsel) = min(x,[],2);
+                elseif unique(TrialData.FieldDirection(trialsel)==-1)
+                    TrialData.MPE(trialsel) = max(x,[],2);
+                end
                 TrialData.PEPV(trialsel) = x(peakvelindices);
                 
                 % Adaptation index
                 adaptindex = nan(size(x,1),1);
                 for ti = 1:size(x,1)
-                    adaptindex(ti) = fitlm(array2table([xfideal(ti,:)' xf(ti,:)']),'Var2 ~ Var1 - 1').Coefficients.Estimate;
+                    mdl = fitlm(array2table([xfideal(ti,:)' xf(ti,:)']),'Var2 ~ Var1 - 1');
+                    adaptindex(ti) = mdl.Coefficients.Estimate;
                 end
                 TrialData.AdaptIndex(trialsel) = adaptindex;
             
